@@ -1,252 +1,272 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../core/constants/app_constants.dart';
-import '../core/theme/app_theme.dart';
-import '../state/flat_registry_provider.dart';
 
+import '../core/config.dart';
+import '../core/theme/app_theme.dart';
+import '../core/utils/formatters.dart';
+import '../data/live.dart';
+import '../data/models.dart';
+import '../state/providers.dart';
+import '../widgets/common.dart';
+
+/// Banquet LED display: live sq.ft. meter, room progress, scan-to-gift QR,
+/// rotating blessings and a donor ticker. Respects the wedding's display mode.
 class LiveStageScreen extends ConsumerStatefulWidget {
-  const LiveStageScreen({super.key});
+  final String slug;
+
+  const LiveStageScreen({super.key, required this.slug});
 
   @override
   ConsumerState<LiveStageScreen> createState() => _LiveStageScreenState();
 }
 
 class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
-  int _activeTickerIndex = 0;
-  Timer? _tickerTimer;
+  StagePayload? _data;
+  Object? _error;
+  LiveConnection? _live;
+  WallEntry? _celebrate;
+  int _spot = 0;
+  Timer? _rotate;
+  Timer? _celebrateTimer;
 
   @override
   void initState() {
     super.initState();
-    _tickerTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (mounted) {
-        setState(() {
-          _activeTickerIndex++;
-        });
-      }
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _load();
+    _rotate = Timer.periodic(const Duration(seconds: 9), (_) {
+      final n = _data?.blessings.length ?? 0;
+      if (n > 1 && mounted) setState(() => _spot = (_spot + 1) % n);
     });
+  }
+
+  Future<void> _load() async {
+    final repo = ref.read(repositoryProvider);
+    try {
+      final data = await repo.stage(widget.slug);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _error = null;
+      });
+      _live ??= LiveConnection.connect(
+        slug: widget.slug,
+        channel: 'stage',
+        token: repo.api.tokens.access,
+        handlers: {
+          'registry.updated': (j) => setState(() => _data = _data?.copyWith(registry: RegistryState.fromJson(j))),
+          'contribution.funded': (j) {
+            final entry = WallEntry.fromJson(j);
+            setState(() {
+              _data = _data?.copyWith(donors: [entry, ...?_data?.donors.where((d) => d.id != entry.id)]);
+              _celebrate = entry;
+            });
+            _celebrateTimer?.cancel();
+            _celebrateTimer = Timer(const Duration(seconds: 8), () {
+              if (mounted) setState(() => _celebrate = null);
+            });
+          },
+          'blessing.approved': (j) {
+            final b = Blessing.fromJson(j);
+            setState(() {
+              _data = _data?.copyWith(blessings: [b, ...?_data?.blessings.where((x) => x.id != b.id)]);
+              _spot = 0;
+            });
+          },
+        },
+      );
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
   }
 
   @override
   void dispose() {
-    _tickerTimer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _rotate?.cancel();
+    _celebrateTimer?.cancel();
+    _live?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final registry = ref.watch(flatRegistryProvider);
-    final contribs = registry.contributions;
-    final currentContrib = contribs.isNotEmpty ? contribs[_activeTickerIndex % contribs.length] : null;
-
+    final data = _data;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0F1D),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0F1D),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: AppTheme.lightGold, size: 18),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      backgroundColor: AppTheme.deepCrimson,
+      body: data == null
+          ? (_error != null
+              ? ErrorPanel(message: errorText(_error!), onRetry: _load)
+              : const Center(child: CircularProgressIndicator(color: AppTheme.lightGold)))
+          : Stack(children: [
+              Container(decoration: const BoxDecoration(gradient: AppTheme.maroonGradient)),
+              SafeArea(child: _content(data)),
+              Positioned(top: 8, left: 8, child: SafeArea(child: IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.of(context).pop()))),
+              if (_celebrate != null && data.displayMode != 'PROGRESS_ONLY') _celebration(_celebrate!),
+            ]),
+    );
+  }
+
+  Widget _content(StagePayload data) {
+    final r = data.registry.summary;
+    final showPeople = data.displayMode != 'PROGRESS_ONLY';
+    final blessing = showPeople && data.blessings.isNotEmpty ? data.blessings[_spot % data.blessings.length] : null;
+    return LayoutBuilder(builder: (context, c) {
+      final wide = c.maxWidth > 700;
+      final meter = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('BUILDING THEIR FIRST HOME', style: GoogleFonts.outfit(fontSize: 12, letterSpacing: 4, color: AppTheme.lightGold)),
+        const SizedBox(height: 6),
+        Text(data.wedding.couple, style: GoogleFonts.cinzel(fontSize: wide ? 40 : 26, fontWeight: FontWeight.bold, color: Colors.white)),
+        const SizedBox(height: 18),
+        Text('${Formatters.number(r.fundedSft)} / ${Formatters.sqft(r.totalSft)}', style: GoogleFonts.cinzel(fontSize: wide ? 44 : 28, fontWeight: FontWeight.bold, color: AppTheme.lightGold)),
+        const SizedBox(height: 10),
+        GoldProgressBar(value: r.progress, height: 18, track: Colors.white24),
+        const SizedBox(height: 6),
+        Text('${Formatters.percent(r.progress)} • ${Formatters.inr(r.raisedPaise)} gifted with love', style: GoogleFonts.outfit(fontSize: 16, color: Colors.white)),
+        const SizedBox(height: 18),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          for (final room in data.registry.rooms)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.redAccent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text('LIVE STAGE LED', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              width: wide ? 200 : 150,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(roomIcon(room.icon), size: 16, color: Colors.white),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(room.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600))),
+                ]),
+                const SizedBox(height: 6),
+                GoldProgressBar(value: room.sft == 0 ? 0 : room.fundedSft / room.sft, height: 6, track: Colors.white24),
+                Text('${room.fundedSft}/${room.sft} sq.ft.', style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70)),
+              ]),
             ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'Banquet Projection Terminal',
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.cinzel(fontSize: 13, color: AppTheme.lightGold, fontWeight: FontWeight.bold),
-              ),
+        ]),
+      ]);
+      final side = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+          child: Row(children: [
+            Image.network('${AppConfig.apiBase}/weddings/${widget.slug}/stage/qr.png', width: 110, height: 110),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Scan to gift a square foot', style: GoogleFonts.cinzel(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.crimsonMaroon)),
+                Text('${Formatters.inr(r.ratePerSftPaise)} per sq.ft.', style: GoogleFonts.outfit(color: AppTheme.textMuted)),
+              ]),
             ),
-          ],
+          ]),
         ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Top Stage Banner
-            Container(
+        if (blessing != null) ...[
+          const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 600),
+            child: Container(
+              key: ValueKey(blessing.id),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF141D30),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.royalGold.withOpacity(0.5), width: 1.5),
-                boxShadow: [
-                  BoxShadow(color: AppTheme.royalGold.withOpacity(0.15), blurRadius: 20),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    '${AppConstants.brideName} & ${AppConstants.groomName}',
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.lightGold,
-                    ),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(18)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (blessing.photoUrl != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(blessing.photoUrl!, height: 140, width: double.infinity, fit: BoxFit.cover)),
                   ),
-                  Text(
-                    'Forever Home Registry • The 2 BHK Sanctuary',
-                    style: GoogleFonts.outfit(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Big Progress Meter
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: registry.overallProgress,
-                      minHeight: 16,
-                      backgroundColor: const Color(0xFF222E48),
-                      valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.royalGold),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '${registry.totalGiftedSqFt} SFT FUNDED',
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.cinzel(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.lightGold),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'TARGET: ${registry.totalSqFt} SFT (${(registry.overallProgress * 100).toStringAsFixed(0)}%)',
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.cinzel(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                if (blessing.message != null) Text('"${blessing.message}"', style: GoogleFonts.playfairDisplay(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.white)),
+                const SizedBox(height: 8),
+                Text('— ${blessing.authorName}', style: GoogleFonts.outfit(color: AppTheme.lightGold)),
+              ]),
             ),
-            const SizedBox(height: 16),
+          ),
+        ],
+      ]);
+      return Column(children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 48, 24, 16),
+            child: wide
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(flex: 3, child: meter), const SizedBox(width: 24), Expanded(flex: 2, child: side)])
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [meter, const SizedBox(height: 20), side]),
+          ),
+        ),
+        if (showPeople && data.donors.isNotEmpty) _Ticker(donors: data.donors),
+      ]);
+    });
+  }
 
-            // Live Rotating Ticker Box
-            if (currentContrib != null)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2D1620), Color(0xFF181B2B)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppTheme.crimsonMaroon, width: 1.5),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.flash_on, color: AppTheme.royalGold, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              'JUST GIFTED & BLESSED ON STAGE',
-                              style: GoogleFonts.cinzel(color: AppTheme.lightGold, fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.royalGold.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '${currentContrib.sqFt} SFT IN ${currentContrib.roomName.toUpperCase()}',
-                            style: GoogleFonts.outfit(color: AppTheme.lightGold, fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      currentContrib.donorName,
-                      style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      currentContrib.relationship,
-                      style: GoogleFonts.outfit(color: AppTheme.lightGold, fontSize: 12),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '"${currentContrib.blessingMessage}"',
-                      style: GoogleFonts.cormorantGaramond(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 16,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 16),
+  Widget _celebration(WallEntry e) => Positioned.fill(
+        child: Container(
+          color: Colors.black54,
+          alignment: Alignment.center,
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(gradient: AppTheme.goldGradient, borderRadius: BorderRadius.circular(28)),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.auto_awesome, size: 48, color: AppTheme.textDark),
+              const SizedBox(height: 10),
+              Text(e.donorName, textAlign: TextAlign.center, style: GoogleFonts.cinzel(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textDark)),
+              Text('just gifted ${e.units} sq.ft. of the ${e.roomName}!', textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 18, color: AppTheme.textDark)),
+              if (e.blessing != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text('"${e.blessing}"', textAlign: TextAlign.center, style: GoogleFonts.playfairDisplay(fontSize: 16, fontStyle: FontStyle.italic))),
+            ]),
+          ),
+        ),
+      );
+}
 
-            // 2 BHK Isometric Visual
-            ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: Image.asset(
-                AppConstants.apartmentPosterPath,
-                height: 220,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(height: 20),
+class _Ticker extends StatefulWidget {
+  final List<WallEntry> donors;
 
-            // On-Ground Instructions
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF131A2A),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.qr_code_scanner, color: AppTheme.lightGold, size: 28),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Scan Banquet Table QR to Gift & Appear on Stage',
-                          style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                        Text(
-                          'Instant WebSocket push updates this screen in < 500ms',
-                          style: GoogleFonts.outfit(color: Colors.white60, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+  const _Ticker({required this.donors});
+
+  @override
+  State<_Ticker> createState() => _TickerState();
+}
+
+class _TickerState extends State<_Ticker> {
+  final _controller = ScrollController();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 40), (_) {
+      if (!_controller.hasClients) return;
+      final max = _controller.position.maxScrollExtent;
+      final next = _controller.offset + 1.5;
+      _controller.jumpTo(next >= max ? 0 : next);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [...widget.donors, ...widget.donors];
+    return Container(
+      height: 48,
+      color: Colors.black26,
+      child: ListView.separated(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 40),
+        itemBuilder: (_, i) => Center(
+          child: Text.rich(TextSpan(children: [
+            TextSpan(text: items[i].donorName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: AppTheme.lightGold, fontSize: 15)),
+            TextSpan(text: ' gifted ${items[i].units} sq.ft. of the ${items[i].roomName}', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15)),
+          ])),
         ),
       ),
     );

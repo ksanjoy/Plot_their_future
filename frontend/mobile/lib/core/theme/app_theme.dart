@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
@@ -103,7 +103,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: surfaceWhite,
         elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.08),
+        shadowColor: Colors.black.withValues(alpha: 0.08),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
           side: const BorderSide(color: Color(0xFFEBDAB0), width: 1),

@@ -15,7 +15,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.plottheirfuture.plot_their_future"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -30,9 +29,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Allows http://10.0.2.2:4000 against a local API during development.
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            // Replace with your upload keystore before publishing (see docs/DEPLOYMENT.md).
             signingConfig = signingConfigs.getByName("debug")
         }
     }

@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
 
 class CountdownTimerWidget extends StatefulWidget {
-  const CountdownTimerWidget({super.key});
+  final DateTime target;
+
+  const CountdownTimerWidget({super.key, required this.target});
 
   @override
   State<CountdownTimerWidget> createState() => _CountdownTimerWidgetState();
@@ -28,7 +29,7 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
 
   void _calculateTimeLeft() {
     final now = DateTime.now();
-    final difference = AppConstants.weddingDateTime.difference(now);
+    final difference = widget.target.difference(now);
     setState(() {
       _timeLeft = difference.isNegative ? Duration.zero : difference;
     });
@@ -50,12 +51,12 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppTheme.darkSurface.withOpacity(0.85),
+        color: AppTheme.darkSurface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.goldBorder, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -86,7 +87,7 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
           decoration: BoxDecoration(
             color: AppTheme.surfaceCardElevated,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.primaryGold.withOpacity(0.3)),
+            border: Border.all(color: AppTheme.primaryGold.withValues(alpha: 0.3)),
           ),
           child: Text(
             value,
@@ -118,7 +119,7 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
       child: Text(
         ':',
         style: TextStyle(
-          color: AppTheme.primaryGold.withOpacity(0.7),
+          color: AppTheme.primaryGold.withValues(alpha: 0.7),
           fontSize: 18,
           fontWeight: FontWeight.bold,
         ),

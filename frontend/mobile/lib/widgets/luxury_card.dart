@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../core/theme/app_theme.dart';
 
 class LuxuryCard extends StatelessWidget {
@@ -41,14 +41,14 @@ class LuxuryCard extends StatelessWidget {
         boxShadow: [
           if (glow)
             BoxShadow(
-              color: AppTheme.primaryGold.withOpacity(0.18),
+              color: AppTheme.primaryGold.withValues(alpha: 0.18),
               blurRadius: 24,
               spreadRadius: 1,
               offset: const Offset(0, 4),
             )
           else
             BoxShadow(
-              color: Colors.black.withOpacity(0.4),
+              color: Colors.black.withValues(alpha: 0.4),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -61,7 +61,7 @@ class LuxuryCard extends StatelessWidget {
       return InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(borderRadius),
-        splashColor: AppTheme.primaryGold.withOpacity(0.15),
+        splashColor: AppTheme.primaryGold.withValues(alpha: 0.15),
         highlightColor: Colors.transparent,
         child: cardContent,
       );

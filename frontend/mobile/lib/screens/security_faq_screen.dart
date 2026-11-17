@@ -1,6 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../core/constants/app_constants.dart';
 import '../core/theme/app_theme.dart';
 
 class SecurityFaqScreen extends StatefulWidget {
@@ -25,8 +24,8 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
       'category': 'Gifting Logistics',
     },
     {
-      'q': 'What happens if the 1,200 SFT apartment goal isn\'t 100% funded?',
-      'a': '100% completion is not required. Whatever square footage is funded (e.g., 35% or 420 SFT) is disbursed directly to the developer as an upfront down payment or applied as principal prepayment on the couple\'s home loan.',
+      'q': 'What happens if the apartment goal isn\'t 100% funded?',
+      'a': '100% completion is not required. Whatever square footage is funded (for example 35% of the home) is disbursed directly to the developer as an upfront down payment or applied as principal prepayment on the couple\'s home loan.',
       'category': 'Property Settlement',
     },
     {
@@ -36,7 +35,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
     },
     {
       'q': 'Why are other weddings on the platform locked or greyed out when I log in?',
-      'a': 'PlotTheirFuture enforces row-level privacy. Your account is linked strictly to the specific wedding invitation extended to you (Sanvi & Santosh). Other weddings hosted on the system remain locked and greyed out to maintain privacy.',
+      'a': 'PlotTheirFuture enforces strict per-wedding privacy. Your account is linked strictly to the specific wedding invitation extended to you. Other weddings hosted on the system remain locked and greyed out to maintain privacy.',
       'category': 'Privacy & Security',
     },
     {
@@ -118,7 +117,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
                   child: _buildTrustBadge(
                     icon: Icons.domain_verification,
                     title: 'RERA Builder\nDirect Transfer',
-                    subtitle: 'Reg: ${AppConstants.reraRegistrationId}',
+                    subtitle: 'Registered projects only',
                     color: AppTheme.royalGold,
                   ),
                 ),
@@ -273,7 +272,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
         border: Border.all(color: const Color(0xFFE2D6C0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -310,7 +309,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppTheme.royalGold.withOpacity(0.12),
+            color: AppTheme.royalGold.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: AppTheme.royalGold, size: 18),

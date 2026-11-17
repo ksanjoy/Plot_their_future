@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/theme/app_theme.dart';
 
@@ -63,7 +63,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFEBDAB0)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 14,
                     offset: const Offset(0, 4),
                   ),
@@ -177,7 +177,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                     step: '1',
                     icon: Icons.architecture,
                     title: 'Explore Floor Plan',
-                    desc: 'Review the 1,200 SFT 2 BHK architectural grid with Living, Master, and Balcony zones.',
+                    desc: 'Explore the couple\'s floor plan, room by room, and pick the square feet you want to gift.',
                   ),
                   _buildStepRow(
                     step: '2',
@@ -234,7 +234,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'PlotTheirFuture is pleased to host this celebration registry on behalf of Sanvi & Santosh and their families. We believe that an invited guest\'s presence, warmth, and blessings are always the greatest and most meaningful gifts. Gifting on this platform is completely voluntary, and invitees are under no obligation whatsoever.',
+                    'PlotTheirFuture is pleased to host this celebration registry on behalf of the couple and their families. We believe that an invited guest\'s presence, warmth, and blessings are always the greatest and most meaningful gifts. Gifting on this platform is completely voluntary, and invitees are under no obligation whatsoever.',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.outfit(
                       fontSize: 12,
