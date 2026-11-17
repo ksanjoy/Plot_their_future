@@ -35,10 +35,15 @@ export class PaymentsService {
       wedding: { slug: c.wedding.slug, brideName: c.wedding.brideName, groomName: c.wedding.groomName },
       links: this.registry.linksFor(c),
     };
-    if (c.status !== 'PENDING') return { ...base, payment: null };
-    if (c.holdExpiresAt.getTime() < Date.now()) {
-      throw new GoneException({ code: 'HOLD_EXPIRED', message: 'Your 10-minute reservation expired. Please pick your square feet again.' });
+    if (c.status === 'EXPIRED' || (c.status === 'PENDING' && c.holdExpiresAt.getTime() < Date.now())) {
+      const minutes = Math.round(c.wedding.cartHoldTtlSec / 60);
+      throw new GoneException({
+        code: 'HOLD_EXPIRED',
+        message: `Your ${minutes}-minute reservation expired. Please pick your square feet again.`,
+        wedding: base.wedding,
+      });
     }
+    if (c.status !== 'PENDING') return { ...base, payment: null };
     if (!c.providerOrderId) throw new GoneException('Payment order missing, please start again');
     return {
       ...base,
@@ -67,6 +72,9 @@ export class PaymentsService {
     }
     const c = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
     if (!c) throw new NotFoundException('Gift not found');
+    if (c.status !== 'PENDING' && c.status !== 'SUCCESS') {
+      throw new GoneException({ code: 'HOLD_EXPIRED', message: 'This reservation is no longer active' });
+    }
     if (outcome === 'failure') {
       await this.registry.markFailed(c.id, 'Payment declined (simulated)');
       const failed = await this.prisma.contribution.findUniqueOrThrow({ where: { id: c.id } });

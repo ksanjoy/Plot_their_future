@@ -28,7 +28,11 @@ import { WeddingsModule } from './weddings/weddings.module.js';
 @Module({
   imports: [
     AppConfigModule,
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 300 }],
+      // e2e suites sign in many users from one IP; OTP brute force is still capped per phone in OtpService.
+      skipIf: () => process.env.NODE_ENV === 'test',
+    }),
     PrismaModule,
     RedisModule,
     JobsModule,

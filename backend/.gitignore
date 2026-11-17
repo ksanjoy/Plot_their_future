@@ -5,3 +5,4 @@ uploads
 *.tsbuildinfo
 .env
 /src/generated/prisma
+uploads-test

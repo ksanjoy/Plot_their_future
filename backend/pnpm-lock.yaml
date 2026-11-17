@@ -59,6 +59,9 @@ importers:
       csv-parse:
         specifier: ^7.0.3
         version: 7.0.3
+      dotenv:
+        specifier: ^18.0.10
+        version: 18.0.10
       helmet:
         specifier: ^8.3.0
         version: 8.3.0
@@ -74,6 +77,9 @@ importers:
       pdfkit:
         specifier: ^0.20.2
         version: 0.20.2
+      prisma:
+        specifier: ^7.10.1
+        version: 7.10.1(@types/node@24.19.2)(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3)
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -123,9 +129,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.2
         version: 4.1.12(vitest@4.1.12)
-      dotenv:
-        specifier: ^18.0.10
-        version: 18.0.10
       oxlint:
         specifier: ^1.58.0
         version: 1.94.0(oxlint-tsgolint@7.0.2007)
@@ -135,9 +138,6 @@ importers:
       prettier:
         specifier: ^3.4.2
         version: 3.10.1
-      prisma:
-        specifier: ^7.10.1
-        version: 7.10.1(@types/node@24.19.2)(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3)
       socket.io-client:
         specifier: ^4.8.4
         version: 4.8.4

@@ -1,6 +1,7 @@
 const escape = (value: unknown): string => {
   if (value === null || value === undefined) return '';
-  const s = value instanceof Date ? value.toISOString() : String(value);
+  const s =
+    value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value as string | number | boolean);
   // Neutralise spreadsheet formula injection.
   // Purely numeric values such as "+919848012345" or "-500" cannot form a formula.
   const dangerous = /^[=@\t\r]/.test(s) || (/^[+-]/.test(s) && !/^[+-][\d\s.]*$/.test(s));

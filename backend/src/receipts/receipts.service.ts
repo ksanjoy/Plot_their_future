@@ -8,6 +8,7 @@ import { InjectEnv, type Env } from '../config/config.module.js';
 import type { Contribution, RoomZone, Wedding } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { canonicalReceipt } from './canonical.js';
 
 type FullContribution = Contribution & { room: RoomZone; wedding: Wedding };
 
@@ -27,20 +28,8 @@ export class ReceiptsService {
     private readonly links: LinkTokenService,
   ) {}
 
-  /** Canonical, order-stable representation that the receipt hash commits to. */
   canonical(c: FullContribution) {
-    return JSON.stringify({
-      receiptNumber: c.receiptNumber,
-      contributionId: c.id,
-      weddingId: c.weddingId,
-      donorName: c.donorName,
-      units: c.units,
-      ratePaise: c.ratePaise,
-      amountPaise: c.amountPaise,
-      room: c.room.key,
-      paidAt: c.paidAt?.toISOString(),
-      paymentId: c.providerPaymentId,
-    });
+    return canonicalReceipt(c);
   }
 
   private async load(id: string): Promise<FullContribution> {
