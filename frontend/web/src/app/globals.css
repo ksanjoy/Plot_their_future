@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-maroon: #8b1e2d;
+  --color-maroon-dark: #5e1220;
+  --color-gold: #c59b27;
+  --color-gold-light: #e8c766;
+  --color-ivory: #faf6ee;
+  --color-ink: #2b1d14;
+  --color-muted: #6b5d52;
+  --color-line: #eadfcb;
+  --font-sans: var(--font-outfit);
+  --font-display: var(--font-cinzel);
+  --font-serif: var(--font-playfair);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ivory);
+  color: var(--color-ink);
+  font-family: var(--font-outfit), system-ui, sans-serif;
+}
+
+@utility gold-gradient {
+  background: linear-gradient(135deg, #e8c766 0%, #c59b27 50%, #9c7a1c 100%);
+}
+
+@utility maroon-gradient {
+  background: linear-gradient(135deg, #8b1e2d 0%, #5e1220 100%);
+}
+
+@utility text-gold-gradient {
+  background: linear-gradient(135deg, #e8c766 0%, #c59b27 60%, #9c7a1c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility card {
+  @apply rounded-2xl border border-line bg-white shadow-[0_1px_2px_rgba(43,29,20,0.04),0_8px_24px_-12px_rgba(43,29,20,0.12)];
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-maroon text-white hover:bg-maroon-dark;
+}
+
+@utility btn-gold {
+  @apply btn gold-gradient text-ink hover:brightness-105;
+}
+
+@utility btn-ghost {
+  @apply btn border border-line bg-white text-ink hover:border-gold;
+}
+
+@utility input {
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-muted/60 focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/30;
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-muted;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full border border-line bg-white px-3 py-1 text-xs font-medium text-ink transition;
+}
+
+@utility chip-active {
+  @apply border-maroon bg-maroon text-white;
+}
+
+@keyframes pulse-gold {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(197, 155, 39, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(197, 155, 39, 0);
+  }
+}
+
+@utility tile-held {
+  animation: pulse-gold 1.6s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@utility animate-ticker {
+  animation: ticker 40s linear infinite;
+}
