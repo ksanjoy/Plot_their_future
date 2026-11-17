@@ -1,0 +1,78 @@
+# Local / single-host stack: PostgreSQL, Redis, API (with workers) and the web app.
+#   cp backend/.env.example backend/.env
+#   docker compose up --build -d
+#   docker compose --profile tools run --rm seed      # optional demo data
+# See docs/DEPLOYMENT.md for production settings.
+name: plot-their-future
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ptf
+      POSTGRES_PASSWORD: ptf
+      POSTGRES_DB: ptf
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ptf -d ptf"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: { context: ./backend, target: runtime }
+    env_file: ./backend/.env
+    environment:
+      # The image defaults to production, which refuses the mock payment provider.
+      # Set NODE_ENV=production with real Razorpay/WhatsApp credentials when deploying.
+      NODE_ENV: ${API_NODE_ENV:-development}
+      DATABASE_URL: postgresql://ptf:ptf@postgres:5432/ptf?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_LOCAL_DIR: /app/uploads
+    ports: ["4000:4000"]
+    volumes: [uploads:/app/uploads]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend/web
+      args:
+        # Baked into the browser bundle: must be the API URL as seen from the browser.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+    ports: ["3000:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+
+  seed:
+    profiles: [tools]
+    build: { context: ./backend, target: build }
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://ptf:ptf@postgres:5432/ptf?schema=public
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "pnpm db:migrate && pnpm db:seed"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

@@ -1,0 +1,9 @@
+# Each app has its own .gitignore (backend/, frontend/web/, frontend/mobile/).
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+.env
+.env.*
+!.env.example
