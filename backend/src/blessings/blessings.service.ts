@@ -2,8 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { englishDataset, englishRecommendedTransformers, RegExpMatcher } from 'obscenity';
 import type { WeddingAccess } from '../access/wedding-access.service.js';
 import type { UploadedFileData } from '../common/upload.js';
-import type { Blessing, ModerationStatus, StageDisplayMode } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { BlessingModel, type BlessingDoc } from '../models/schemas.js';
+import type { ModerationStatus, StageDisplayMode } from '../models/types.js';
 import { RealtimeService, rooms } from '../realtime/realtime.service.js';
 import { ANONYMOUS_NAME } from '../registry/registry.service.js';
 import { StorageService } from '../storage/storage.service.js';
@@ -20,12 +20,11 @@ export interface BlessingInput {
 @Injectable()
 export class BlessingsService {
   constructor(
-    private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly realtime: RealtimeService,
   ) {}
 
-  view(b: Blessing, mode: StageDisplayMode = 'NAMES_AND_BLESSINGS') {
+  view(b: BlessingDoc, mode: StageDisplayMode = 'NAMES_AND_BLESSINGS') {
     return {
       id: b.id,
       authorName: mode === 'NAMES_AND_BLESSINGS' ? b.authorName : ANONYMOUS_NAME,
@@ -51,42 +50,38 @@ export class BlessingsService {
     if (matcher.hasMatch(authorName)) throw new BadRequestException({ code: 'INAPPROPRIATE_CONTENT', message: 'Please use your real name' });
 
     const stored = photo ? await this.storage.put(`blessing-${access.wedding.id.slice(0, 8)}`, photo.buffer, photo.mimetype) : null;
-    // Text passes the automated filter and goes live immediately; photos wait for a human moderator.
     const status: ModerationStatus = stored ? 'PENDING' : 'APPROVED';
-    const blessing = await this.prisma.blessing.create({
-      data: {
-        weddingId: access.wedding.id,
-        userId: access.user.id,
-        authorName,
-        message,
-        photoKey: stored?.key ?? null,
-        tableNumber: input.tableNumber?.trim() || null,
-        status,
-      },
+    const blessing = await BlessingModel.create({
+      weddingId: access.wedding._id,
+      userId: access.user.id,
+      authorName,
+      message,
+      photoKey: stored?.key ?? null,
+      tableNumber: input.tableNumber?.trim() || null,
+      status,
     });
     if (status === 'APPROVED') this.announce(blessing, access.wedding.stageDisplayMode);
     return this.view(blessing);
   }
 
   async list(weddingId: string, status: ModerationStatus = 'APPROVED', limit = 50, mode?: StageDisplayMode) {
-    const rows = await this.prisma.blessing.findMany({
-      where: { weddingId, status },
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(limit, 200),
-    });
+    const rows = await BlessingModel.find({ weddingId, status })
+      .sort({ createdAt: -1 })
+      .limit(Math.min(limit, 200));
     return rows.map((b) => this.view(b, mode));
   }
 
   async moderate(access: WeddingAccess, id: string, status: ModerationStatus) {
-    const existing = await this.prisma.blessing.findFirst({ where: { id, weddingId: access.wedding.id } });
+    const existing = await BlessingModel.findOne({ _id: id, weddingId: access.wedding._id });
     if (!existing) throw new NotFoundException('Blessing not found');
-    const blessing = await this.prisma.blessing.update({ where: { id }, data: { status } });
+    const blessing = await BlessingModel.findByIdAndUpdate(id, { $set: { status } }, { new: true });
+    if (!blessing) throw new NotFoundException('Blessing not found');
     if (status === 'APPROVED' && existing.status !== 'APPROVED') this.announce(blessing, access.wedding.stageDisplayMode);
     return this.view(blessing);
   }
 
-  private announce(b: Blessing, mode: StageDisplayMode) {
-    this.realtime.emit(rooms.wedding(b.weddingId), 'blessing.approved', this.view(b));
-    if (mode !== 'PROGRESS_ONLY') this.realtime.emit(rooms.stage(b.weddingId), 'blessing.approved', this.view(b, mode));
+  private announce(b: BlessingDoc, mode: StageDisplayMode) {
+    this.realtime.emit(rooms.wedding(b.weddingId.toString()), 'blessing.approved', this.view(b));
+    if (mode !== 'PROGRESS_ONLY') this.realtime.emit(rooms.stage(b.weddingId.toString()), 'blessing.approved', this.view(b, mode));
   }
 }

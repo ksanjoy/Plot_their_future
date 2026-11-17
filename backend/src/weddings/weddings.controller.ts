@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { ADMIN_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import type { UploadedFileData } from '../common/upload.js';
@@ -103,7 +104,7 @@ export class WeddingsController {
   async removeMember(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('memberId', { schema: z.uuid() }) memberId: string,
+    @Param('memberId', { schema: objectId }) memberId: string,
   ) {
     await this.weddings.removeMember(await this.access.require(user, slug, ADMIN_ROLES), memberId);
   }

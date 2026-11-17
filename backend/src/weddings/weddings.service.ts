@@ -5,8 +5,25 @@ import { randomCode } from '../common/utils/crypto.js';
 import { initialsOf, slugify } from '../common/utils/format.js';
 import { maskPhone, toE164 } from '../common/utils/phone.js';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import type { Wedding } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { idString, withTransaction } from '../database/helpers.js';
+import {
+  CeremonyModel,
+  ContributionModel,
+  DispatchMessageModel,
+  DispatchModel,
+  FloorTileModel,
+  InvitationCeremonyModel,
+  InvitationModel,
+  LedgerEntryModel,
+  RoomZoneModel,
+  RsvpModel,
+  SettlementModel,
+  UserModel,
+  WeddingMemberModel,
+  WeddingModel,
+  type UserDoc,
+  type WeddingDoc,
+} from '../models/schemas.js';
 import { RegistryService } from '../registry/registry.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { createRoomsAndTiles, DEFAULT_2BHK_ROOMS, type RoomInput } from './rooms.js';
@@ -16,12 +33,11 @@ import type { CreateWeddingInput, MemberInput, UpdateWeddingInput } from './wedd
 export class WeddingsService {
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly registry: RegistryService,
     private readonly storage: StorageService,
   ) {}
 
-  view(w: Wedding, full: boolean) {
+  view(w: WeddingDoc, full: boolean) {
     return {
       id: w.id,
       slug: w.slug,
@@ -55,48 +71,49 @@ export class WeddingsService {
     const totalSft = rooms.reduce((s, r) => s + r.sft, 0);
     let slug = input.slug ?? slugify(`${input.brideName.split(' ')[0]}-${input.groomName.split(' ')[0]}`);
     if (slug.length < 3) slug = `wedding-${randomCode(6)}`;
-    if (await this.prisma.wedding.findUnique({ where: { slug }, select: { id: true } })) {
+    if (await WeddingModel.exists({ slug })) {
       if (input.slug) throw new ConflictException({ code: 'SLUG_TAKEN', message: 'This wedding URL is already taken' });
       slug = `${slug}-${randomCode(4)}`;
     }
 
     const { rooms: _rooms, ratePerSft, slug: _slug, ...fields } = input;
-    const wedding = await this.prisma.$transaction(
-      async (tx) => {
-        const created = await tx.wedding.create({
-          data: {
+    const wedding = await withTransaction(async (session) => {
+      const [created] = await WeddingModel.create(
+        [
+          {
             ...fields,
             videoInviteUrl: fields.videoInviteUrl || null,
             slug,
             totalSft,
             ratePerSftPaise: ratePerSft * 100,
-            members: { create: { userId: user.id, role: 'HOST' } },
           },
-        });
-        await createRoomsAndTiles(tx, created.id, rooms);
-        return created;
-      },
-      { timeout: 30_000 },
-    );
+        ],
+        { session },
+      );
+      if (!created) throw new Error('Failed to create wedding');
+      await WeddingMemberModel.create([{ weddingId: created._id, userId: user.id, role: 'HOST' }], { session });
+      await createRoomsAndTiles(session, created.id, rooms);
+      return created;
+    });
     return this.view(wedding, true);
   }
 
   async update(access: WeddingAccess, input: UpdateWeddingInput) {
     const { ratePerSft, ...fields } = input;
-    const updated = await this.prisma.wedding.update({
-      where: { id: access.wedding.id },
-      data: {
-        ...fields,
-        ...(fields.videoInviteUrl === '' ? { videoInviteUrl: null } : {}),
-        ...(ratePerSft !== undefined ? { ratePerSftPaise: ratePerSft * 100 } : {}),
-      },
-    });
+    const data: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) data[key] = value;
+    }
+    if (fields.videoInviteUrl === '') data.videoInviteUrl = null;
+    if (ratePerSft !== undefined) data.ratePerSftPaise = ratePerSft * 100;
+    const updated = await WeddingModel.findByIdAndUpdate(access.wedding.id, { $set: data }, { new: true });
+    if (!updated) throw new NotFoundException('Wedding not found');
     return this.view(updated, true);
   }
 
   async replaceRooms(access: WeddingAccess, rooms: RoomInput[]) {
     const weddingId = access.wedding.id;
-    const contributions = await this.prisma.contribution.count({ where: { weddingId } });
+    const contributions = await ContributionModel.countDocuments({ weddingId });
     if (contributions > 0) {
       throw new ConflictException({
         code: 'REGISTRY_LOCKED',
@@ -104,15 +121,12 @@ export class WeddingsService {
       });
     }
     const totalSft = rooms.reduce((s, r) => s + r.sft, 0);
-    await this.prisma.$transaction(
-      async (tx) => {
-        await tx.floorTile.deleteMany({ where: { weddingId } });
-        await tx.roomZone.deleteMany({ where: { weddingId } });
-        await createRoomsAndTiles(tx, weddingId, rooms);
-        await tx.wedding.update({ where: { id: weddingId }, data: { totalSft } });
-      },
-      { timeout: 30_000 },
-    );
+    await withTransaction(async (session) => {
+      await FloorTileModel.deleteMany({ weddingId }, { session });
+      await RoomZoneModel.deleteMany({ weddingId }, { session });
+      await createRoomsAndTiles(session, weddingId, rooms);
+      await WeddingModel.updateOne({ _id: weddingId }, { $set: { totalSft } }, { session });
+    });
     void this.registry.broadcastState(weddingId);
     return this.registry.state(weddingId);
   }
@@ -120,14 +134,13 @@ export class WeddingsService {
   async microsite(access: WeddingAccess) {
     const { wedding, role, invitation } = access;
     const staff = STAFF_ROLES.includes(role) || role === 'PLATFORM';
-    const ceremonies = await this.prisma.ceremony.findMany({
-      where: {
-        weddingId: wedding.id,
-        ...(!staff && invitation ? { invitations: { some: { invitationId: invitation.id } } } : {}),
-      },
-      orderBy: [{ startsAt: 'asc' }, { sortOrder: 'asc' }],
-    });
-    const rsvp = invitation ? await this.prisma.rsvp.findUnique({ where: { invitationId: invitation.id } }) : null;
+    const ceremonyFilter: { weddingId: unknown; _id?: { $in: unknown[] } } = { weddingId: wedding._id };
+    if (!staff && invitation) {
+      const links = await InvitationCeremonyModel.find({ invitationId: invitation._id }).select('ceremonyId');
+      ceremonyFilter._id = { $in: links.map((link) => link.ceremonyId) };
+    }
+    const ceremonies = await CeremonyModel.find(ceremonyFilter).sort({ startsAt: 1, sortOrder: 1 });
+    const rsvp = invitation ? await RsvpModel.findOne({ invitationId: invitation._id }) : null;
     return {
       wedding: this.view(wedding, ADMIN_ROLES.includes(role)),
       role,
@@ -149,37 +162,43 @@ export class WeddingsService {
 
   async mine(user: AuthUser) {
     const [memberships, invitations] = await Promise.all([
-      this.prisma.weddingMember.findMany({ where: { userId: user.id }, include: { wedding: true } }),
-      this.prisma.invitation.findMany({ where: { phone: user.phone }, include: { wedding: true } }),
+      WeddingMemberModel.find({ userId: user.id }).populate<{ wedding: WeddingDoc }>('wedding'),
+      InvitationModel.find({ phone: user.phone }).populate<{ wedding: WeddingDoc }>('wedding'),
     ]);
     const map = new Map<string, ReturnType<WeddingsService['view']> & { role: string }>();
-    for (const i of invitations) map.set(i.wedding.id, { ...this.view(i.wedding, false), role: 'GUEST' });
-    for (const m of memberships) map.set(m.wedding.id, { ...this.view(m.wedding, ADMIN_ROLES.includes(m.role)), role: m.role });
+    for (const invite of invitations) {
+      const wedding = invite.get('wedding') as WeddingDoc | undefined;
+      if (!wedding) continue;
+      map.set(wedding.id, { ...this.view(wedding, false), role: 'GUEST' });
+    }
+    for (const membership of memberships) {
+      const wedding = membership.get('wedding') as WeddingDoc | undefined;
+      if (!wedding) continue;
+      map.set(wedding.id, { ...this.view(wedding, ADMIN_ROLES.includes(membership.role)), role: membership.role });
+    }
     return [...map.values()];
   }
 
   /** Multi-tenant discovery feed: other couples' celebrations stay masked. */
   async publicFeed(user?: AuthUser) {
-    const weddings = await this.prisma.wedding.findMany({
-      orderBy: [{ weddingDate: 'asc' }, { createdAt: 'desc' }],
-      take: 50,
-      select: { id: true, slug: true, brideName: true, groomName: true, weddingDate: true, city: true, coverPhotoUrl: true, totalSft: true },
-    });
+    const weddings = await WeddingModel.find()
+      .sort({ weddingDate: 1, createdAt: -1 })
+      .limit(50)
+      .select('slug brideName groomName weddingDate city coverPhotoUrl totalSft');
     const unlocked = new Map<string, string>();
     if (user) {
       const [members, invites] = await Promise.all([
-        this.prisma.weddingMember.findMany({ where: { userId: user.id }, select: { weddingId: true, role: true } }),
-        this.prisma.invitation.findMany({ where: { phone: user.phone }, select: { weddingId: true } }),
+        WeddingMemberModel.find({ userId: user.id }).select('weddingId role'),
+        InvitationModel.find({ phone: user.phone }).select('weddingId'),
       ]);
-      invites.forEach((i) => unlocked.set(i.weddingId, 'GUEST'));
-      members.forEach((m) => unlocked.set(m.weddingId, m.role));
+      invites.forEach((invite) => unlocked.set(idString(invite.weddingId), 'GUEST'));
+      members.forEach((member) => unlocked.set(idString(member.weddingId), member.role));
     }
-    const funded = await this.prisma.floorTile.groupBy({
-      by: ['weddingId'],
-      where: { status: 'FUNDED', weddingId: { in: weddings.map((w) => w.id) } },
-      _count: { _all: true },
-    });
-    const fundedBy = new Map(funded.map((f) => [f.weddingId, f._count._all]));
+    const funded = await FloorTileModel.aggregate<{ _id: { toString(): string }; count: number }>([
+      { $match: { status: 'FUNDED', weddingId: { $in: weddings.map((w) => w._id) } } },
+      { $group: { _id: '$weddingId', count: { $sum: 1 } } },
+    ]);
+    const fundedBy = new Map(funded.map((row) => [idString(row._id), row.count]));
     return weddings.map((w) => {
       const role = unlocked.get(w.id);
       const monthYear = w.weddingDate?.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) ?? null;
@@ -210,18 +229,19 @@ export class WeddingsService {
   }
 
   async invitationPreview(refToken: string) {
-    const inv = await this.prisma.invitation.findUnique({ where: { refToken }, include: { wedding: true } });
-    if (!inv) throw new NotFoundException('Invitation not found');
+    const inv = await InvitationModel.findOne({ refToken }).populate<{ wedding: WeddingDoc }>('wedding');
+    const wedding = inv?.get('wedding') as WeddingDoc | undefined;
+    if (!inv || !wedding) throw new NotFoundException('Invitation not found');
     return {
       guestName: inv.guestName,
       maskedPhone: maskPhone(inv.phone),
       wedding: {
-        slug: inv.wedding.slug,
-        brideName: inv.wedding.brideName,
-        groomName: inv.wedding.groomName,
-        weddingDate: inv.wedding.weddingDate,
-        city: inv.wedding.city,
-        coverPhotoUrl: inv.wedding.coverPhotoUrl,
+        slug: wedding.slug,
+        brideName: wedding.brideName,
+        groomName: wedding.groomName,
+        weddingDate: wedding.weddingDate,
+        city: wedding.city,
+        coverPhotoUrl: wedding.coverPhotoUrl,
       },
     };
   }
@@ -232,22 +252,27 @@ export class WeddingsService {
     if (!allowed.includes(file.mimetype)) throw new BadRequestException(`Allowed types: ${allowed.join(', ')}`);
     if (file.size > maxBytes) throw new BadRequestException(`File too large (max ${Math.round(maxBytes / 1048576)} MB)`);
     const { url } = await this.storage.put(`${access.wedding.slug}-${kind}`, file.buffer, file.mimetype);
-    const updated = await this.prisma.wedding.update({
-      where: { id: access.wedding.id },
-      data: kind === 'cover' ? { coverPhotoUrl: url } : { videoInviteUrl: url },
-    });
+    const updated = await WeddingModel.findByIdAndUpdate(
+      access.wedding.id,
+      { $set: kind === 'cover' ? { coverPhotoUrl: url } : { videoInviteUrl: url } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('Wedding not found');
     return this.view(updated, true);
   }
 
-  // ------------------------------------------------------------- members
-
   async members(weddingId: string) {
-    const rows = await this.prisma.weddingMember.findMany({
-      where: { weddingId },
-      include: { user: { select: { id: true, phone: true, name: true } } },
-      orderBy: { createdAt: 'asc' },
+    const rows = await WeddingMemberModel.find({ weddingId }).populate<{ user: UserDoc }>('user').sort({ createdAt: 1 });
+    return rows.map((m) => {
+      const user = m.get('user') as UserDoc;
+      return {
+        id: m.id,
+        role: m.role,
+        label: m.label,
+        createdAt: m.createdAt,
+        user: { id: user.id, phone: user.phone, name: user.name },
+      };
     });
-    return rows.map((m) => ({ id: m.id, role: m.role, label: m.label, createdAt: m.createdAt, user: m.user }));
   }
 
   async addMember(access: WeddingAccess, input: MemberInput) {
@@ -255,89 +280,96 @@ export class WeddingsService {
     if (!phone) throw new BadRequestException('Enter a valid mobile number');
     if (input.role === 'HOST' && access.role !== 'HOST') throw new ForbiddenException('Only a host can add another host');
     if (input.role === 'LEAD' && !input.label) throw new BadRequestException('Family leads need a referral label, e.g. "uncle-ravi"');
-    const user = await this.prisma.user.upsert({
-      where: { phone },
-      update: {},
-      create: { phone, name: input.name },
-    });
-    const member = await this.prisma.weddingMember.upsert({
-      where: { weddingId_userId: { weddingId: access.wedding.id, userId: user.id } },
-      update: { role: input.role, label: input.label ?? null },
-      create: { weddingId: access.wedding.id, userId: user.id, role: input.role, label: input.label ?? null },
-    });
+    const user = await UserModel.findOneAndUpdate(
+      { phone },
+      { $setOnInsert: { phone, name: input.name ?? null } },
+      { upsert: true, new: true },
+    );
+    if (!user) throw new ConflictException('Could not save member');
+    const member = await WeddingMemberModel.findOneAndUpdate(
+      { weddingId: access.wedding._id, userId: user._id },
+      { $set: { role: input.role, label: input.label ?? null }, $setOnInsert: { weddingId: access.wedding._id, userId: user._id } },
+      { upsert: true, new: true },
+    );
+    if (!member) throw new ConflictException('Could not save member');
     return { id: member.id, role: member.role, label: member.label, user: { id: user.id, phone: user.phone, name: user.name } };
   }
 
   async removeMember(access: WeddingAccess, memberId: string) {
-    const member = await this.prisma.weddingMember.findFirst({ where: { id: memberId, weddingId: access.wedding.id } });
+    const member = await WeddingMemberModel.findOne({ _id: memberId, weddingId: access.wedding._id });
     if (!member) throw new NotFoundException('Member not found');
     if (member.role === 'HOST') {
       if (access.role !== 'HOST') throw new ForbiddenException('Only a host can remove a host');
-      const hosts = await this.prisma.weddingMember.count({ where: { weddingId: access.wedding.id, role: 'HOST' } });
+      const hosts = await WeddingMemberModel.countDocuments({ weddingId: access.wedding._id, role: 'HOST' });
       if (hosts <= 1) throw new ConflictException('A wedding needs at least one host');
     }
-    await this.prisma.weddingMember.delete({ where: { id: member.id } });
+    await WeddingMemberModel.deleteOne({ _id: member._id });
   }
 
-  // ------------------------------------------------------------ dashboard
-
   async dashboard(access: WeddingAccess) {
-    const weddingId = access.wedding.id;
+    const weddingId = access.wedding._id;
+    const dispatchIds = (await DispatchModel.find({ weddingId }).select('_id')).map((row) => row._id);
     const [guestTotal, byCohort, rsvpGroups, rsvpCounts, contributionGroups, ledger, dispatchGroups, registry, pendingSettlements] =
       await Promise.all([
-        this.prisma.invitation.count({ where: { weddingId } }),
-        this.prisma.invitation.groupBy({ by: ['cohort'], where: { weddingId }, _count: { _all: true } }),
-        this.prisma.rsvp.groupBy({ by: ['status'], where: { weddingId }, _count: { _all: true } }),
-        this.prisma.rsvp.aggregate({
-          where: { weddingId, status: 'ATTENDING' },
-          _sum: { adults: true, children: true, infants: true },
-        }),
-        this.prisma.contribution.groupBy({
-          by: ['status'],
-          where: { weddingId },
-          _count: { _all: true },
-          _sum: { amountPaise: true, units: true },
-        }),
-        this.prisma.ledgerEntry.groupBy({ by: ['type'], where: { weddingId }, _sum: { amountPaise: true } }),
-        this.prisma.dispatchMessage.groupBy({ by: ['status'], where: { dispatch: { weddingId } }, _count: { _all: true } }),
+        InvitationModel.countDocuments({ weddingId }),
+        InvitationModel.aggregate<{ _id: string; count: number }>([{ $match: { weddingId } }, { $group: { _id: '$cohort', count: { $sum: 1 } } }]),
+        RsvpModel.aggregate<{ _id: string; count: number }>([{ $match: { weddingId } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+        RsvpModel.aggregate<{ adults: number; children: number; infants: number }>([
+          { $match: { weddingId, status: 'ATTENDING' } },
+          { $group: { _id: null, adults: { $sum: '$adults' }, children: { $sum: '$children' }, infants: { $sum: '$infants' } } },
+        ]),
+        ContributionModel.aggregate<{ _id: string; count: number; amountPaise: number; units: number }>([
+          { $match: { weddingId } },
+          { $group: { _id: '$status', count: { $sum: 1 }, amountPaise: { $sum: '$amountPaise' }, units: { $sum: '$units' } } },
+        ]),
+        LedgerEntryModel.aggregate<{ _id: string; amountPaise: number }>([
+          { $match: { weddingId } },
+          { $group: { _id: '$type', amountPaise: { $sum: '$amountPaise' } } },
+        ]),
+        DispatchMessageModel.aggregate<{ _id: string; count: number }>([
+          { $match: { dispatchId: { $in: dispatchIds } } },
+          { $group: { _id: '$status', count: { $sum: 1 } } },
+        ]),
         this.registry.summary(access.wedding),
-        this.prisma.settlement.aggregate({
-          where: { weddingId, status: { in: ['REQUESTED', 'HOST_APPROVED', 'APPROVED'] } },
-          _sum: { amountPaise: true },
-        }),
+        SettlementModel.aggregate<{ amountPaise: number }>([
+          { $match: { weddingId, status: { $in: ['REQUESTED', 'HOST_APPROVED', 'APPROVED'] } } },
+          { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } },
+        ]),
       ]);
-    const ledgerSum = (t: string) => ledger.find((l) => l.type === t)?._sum.amountPaise ?? 0;
-    const success = contributionGroups.find((g) => g.status === 'SUCCESS');
+    const ledgerSum = (t: string) => ledger.find((l) => l._id === t)?.amountPaise ?? 0;
+    const success = contributionGroups.find((g) => g._id === 'SUCCESS');
+    const head = rsvpCounts[0];
     const credited = ledgerSum('CREDIT');
     const disbursed = ledgerSum('DEBIT') + ledgerSum('REFUND');
+    const pending = pendingSettlements[0]?.amountPaise ?? 0;
     return {
       guests: {
         total: guestTotal,
-        byCohort: Object.fromEntries(byCohort.map((c) => [c.cohort, c._count._all])),
+        byCohort: Object.fromEntries(byCohort.map((c) => [c._id, c.count])),
       },
       rsvp: {
-        byStatus: Object.fromEntries(rsvpGroups.map((g) => [g.status, g._count._all])),
-        responded: rsvpGroups.reduce((s, g) => s + g._count._all, 0),
+        byStatus: Object.fromEntries(rsvpGroups.map((g) => [g._id, g.count])),
+        responded: rsvpGroups.reduce((s, g) => s + g.count, 0),
         headcount: {
-          adults: rsvpCounts._sum.adults ?? 0,
-          children: rsvpCounts._sum.children ?? 0,
-          infants: rsvpCounts._sum.infants ?? 0,
+          adults: head?.adults ?? 0,
+          children: head?.children ?? 0,
+          infants: head?.infants ?? 0,
         },
       },
       registry,
       gifts: {
-        contributors: success?._count._all ?? 0,
-        fundedSft: success?._sum.units ?? 0,
-        raisedPaise: success?._sum.amountPaise ?? 0,
-        byStatus: Object.fromEntries(contributionGroups.map((g) => [g.status, g._count._all])),
+        contributors: success?.count ?? 0,
+        fundedSft: success?.units ?? 0,
+        raisedPaise: success?.amountPaise ?? 0,
+        byStatus: Object.fromEntries(contributionGroups.map((g) => [g._id, g.count])),
       },
       escrow: {
         creditedPaise: credited,
         disbursedPaise: disbursed,
-        pendingSettlementPaise: pendingSettlements._sum.amountPaise ?? 0,
-        availablePaise: credited - disbursed - (pendingSettlements._sum.amountPaise ?? 0),
+        pendingSettlementPaise: pending,
+        availablePaise: credited - disbursed - pending,
       },
-      dispatch: Object.fromEntries(dispatchGroups.map((g) => [g.status, g._count._all])),
+      dispatch: Object.fromEntries(dispatchGroups.map((g) => [g._id, g.count])),
     };
   }
 }

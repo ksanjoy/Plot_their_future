@@ -6,7 +6,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { BlessingsModule } from './blessings/blessings.module.js';
 import { CeremoniesModule } from './ceremonies/ceremonies.module.js';
 import { JwtAuthGuard } from './common/jwt-auth.guard.js';
-import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
+import { MongoExceptionFilter } from './database/mongo-exception.filter.js';
 import { AppConfigModule } from './config/config.module.js';
 import { DispatchModule } from './dispatch/dispatch.module.js';
 import { FinanceModule } from './finance/finance.module.js';
@@ -15,7 +15,7 @@ import { HealthController } from './health/health.controller.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
-import { PrismaModule } from './prisma/prisma.module.js';
+import { DatabaseModule } from './database/database.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { ReceiptsModule } from './receipts/receipts.module.js';
 import { RedisModule } from './redis/redis.module.js';
@@ -33,7 +33,7 @@ import { WeddingsModule } from './weddings/weddings.module.js';
       // e2e suites sign in many users from one IP; OTP brute force is still capped per phone in OtpService.
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
-    PrismaModule,
+    DatabaseModule,
     RedisModule,
     JobsModule,
     AccessModule,
@@ -57,7 +57,7 @@ import { WeddingsModule } from './weddings/weddings.module.js';
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
+    { provide: APP_FILTER, useClass: MongoExceptionFilter },
   ],
 })
 export class AppModule {}

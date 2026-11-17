@@ -3,6 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { LinkTokenService } from '../auth/link-token.service.js';
 import { Public } from '../common/auth.js';
 import { PaymentsService } from './payments.service.js';
@@ -30,7 +31,7 @@ export class PaymentsController {
 
   @Public()
   @Get('checkout/:id')
-  checkout(@Param('id', { schema: z.uuid() }) id: string, @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>) {
+  checkout(@Param('id', { schema: objectId }) id: string, @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>) {
     this.links.verify(q.t, id, 'checkout');
     return this.payments.checkout(id);
   }
@@ -39,7 +40,7 @@ export class PaymentsController {
   @Post('checkout/:id/verify')
   @HttpCode(200)
   verify(
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>,
     @Body({ schema: verifySchema }) body: z.infer<typeof verifySchema>,
   ) {
@@ -55,7 +56,7 @@ export class PaymentsController {
   @Post('mock/:id/complete')
   @HttpCode(200)
   mock(
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>,
     @Body({ schema: mockSchema }) body: z.infer<typeof mockSchema>,
   ) {

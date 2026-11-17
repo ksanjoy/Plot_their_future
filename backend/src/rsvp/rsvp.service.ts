@@ -1,9 +1,19 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import type { FilterQuery } from 'mongoose';
 import type { WeddingAccess } from '../access/wedding-access.service.js';
 import { toCsv } from '../common/csv.js';
-import type { Prisma, RsvpStatus } from '../generated/prisma/client.js';
+import { idString, idStrings } from '../database/helpers.js';
+import { withTransaction } from '../database/helpers.js';
+import {
+  CeremonyModel,
+  InvitationCeremonyModel,
+  InvitationModel,
+  RsvpModel,
+  type CeremonyDoc,
+  type RsvpDoc,
+} from '../models/schemas.js';
+import type { Invitation, RsvpStatus } from '../models/types.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService, rooms } from '../realtime/realtime.service.js';
 
 export interface RsvpInput {
@@ -31,7 +41,6 @@ export class RsvpService {
   private readonly logger = new Logger(RsvpService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeService,
   ) {}
@@ -45,28 +54,24 @@ export class RsvpService {
 
   async mine(access: WeddingAccess) {
     const inv = this.requireInvitation(access);
+    const links = await InvitationCeremonyModel.find({ invitationId: inv._id }).select('ceremonyId');
     const [rsvp, ceremonies] = await Promise.all([
-      this.prisma.rsvp.findUnique({ where: { invitationId: inv.id } }),
-      this.prisma.ceremony.findMany({
-        where: { invitations: { some: { invitationId: inv.id } } },
-        orderBy: { startsAt: 'asc' },
-        select: { id: true, title: true, startsAt: true, venueName: true },
-      }),
+      RsvpModel.findOne({ invitationId: inv._id }),
+      CeremonyModel.find({ _id: { $in: links.map((link) => link.ceremonyId) } })
+        .sort({ startsAt: 1 })
+        .select('title startsAt venueName'),
     ]);
     return {
       invitation: { id: inv.id, guestName: inv.guestName, email: inv.email, maxAttendees: inv.maxAttendees },
-      invitedCeremonies: ceremonies,
+      invitedCeremonies: ceremonies.map((c) => ({ id: c.id, title: c.title, startsAt: c.startsAt, venueName: c.venueName })),
       rsvp,
     };
   }
 
   async upsert(access: WeddingAccess, input: RsvpInput) {
     const inv = this.requireInvitation(access);
-    const invited = await this.prisma.invitationCeremony.findMany({
-      where: { invitationId: inv.id },
-      include: { ceremony: { select: { id: true, title: true, startsAt: true } } },
-    });
-    const invitedIds = new Set(invited.map((i) => i.ceremonyId));
+    const invited = await InvitationCeremonyModel.find({ invitationId: inv._id }).populate<{ ceremony: CeremonyDoc }>('ceremony');
+    const invitedIds = new Set(invited.map((i) => idString(i.ceremonyId)));
     const declined = input.status === 'DECLINED';
 
     if (!declined) {
@@ -105,22 +110,27 @@ export class RsvpService {
       note: input.note ?? null,
     };
 
-    const rsvp = await this.prisma.$transaction(async (tx) => {
+    const rsvp = await withTransaction(async (session) => {
       if (input.guestName || input.email !== undefined) {
-        await tx.invitation.update({
-          where: { id: inv.id },
-          data: { ...(input.guestName ? { guestName: input.guestName } : {}), ...(input.email !== undefined ? { email: input.email } : {}) },
-        });
+        await InvitationModel.updateOne(
+          { _id: inv._id },
+          { $set: { ...(input.guestName ? { guestName: input.guestName } : {}), ...(input.email !== undefined ? { email: input.email } : {}) } },
+          { session },
+        );
       }
-      return tx.rsvp.upsert({
-        where: { invitationId: inv.id },
-        create: { ...data, weddingId: access.wedding.id, invitationId: inv.id },
-        update: data,
-      });
+      return RsvpModel.findOneAndUpdate(
+        { invitationId: inv._id },
+        { $set: data, $setOnInsert: { weddingId: access.wedding._id, invitationId: inv._id } },
+        { upsert: true, new: true, session, setDefaultsOnInsert: true },
+      );
     });
+    if (!rsvp) throw new BadRequestException('Could not save RSVP');
 
     const w = access.wedding;
-    const titles = invited.filter((i) => rsvp.attendingCeremonyIds.includes(i.ceremonyId)).map((i) => i.ceremony.title);
+    const attending = new Set(idStrings(rsvp.attendingCeremonyIds));
+    const titles = invited
+      .filter((i) => attending.has(idString(i.ceremonyId)))
+      .map((i) => (i.get('ceremony') as CeremonyDoc).title);
     const summary =
       rsvp.status === 'DECLINED'
         ? 'Regretfully declined'
@@ -134,29 +144,46 @@ export class RsvpService {
     return rsvp;
   }
 
-  private scope(access: WeddingAccess): Prisma.InvitationWhereInput {
-    return access.role === 'LEAD' ? { weddingId: access.wedding.id, refLead: access.member?.label ?? '__none__' } : { weddingId: access.wedding.id };
+  private scope(access: WeddingAccess): FilterQuery<Invitation> {
+    return access.role === 'LEAD'
+      ? { weddingId: access.wedding._id, refLead: access.member?.label ?? '__none__' }
+      : { weddingId: access.wedding._id };
+  }
+
+  private async invitationsInScope(scope: FilterQuery<Invitation>) {
+    return InvitationModel.find(scope).select('guestName phone cohort refLead maxAttendees');
   }
 
   async list(access: WeddingAccess, status?: RsvpStatus) {
-    const rows = await this.prisma.rsvp.findMany({
-      where: { invitation: this.scope(access), ...(status ? { status } : {}) },
-      include: { invitation: { select: { guestName: true, phone: true, cohort: true, refLead: true, maxAttendees: true } } },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const invitations = await this.invitationsInScope(this.scope(access));
+    const byId = new Map(invitations.map((inv) => [inv.id, inv]));
+    const rows = await RsvpModel.find({
+      invitationId: { $in: invitations.map((inv) => inv._id) },
+      ...(status ? { status } : {}),
+    }).sort({ updatedAt: -1 });
     const staffCanSeePhone = access.role !== 'VENUE';
-    return rows.map((r) => ({
-      ...r,
-      invitation: { ...r.invitation, phone: staffCanSeePhone ? r.invitation.phone : undefined },
-    }));
+    return rows.map((r) => {
+      const invitation = byId.get(idString(r.invitationId));
+      return {
+        ...this.rsvpPlain(r),
+        invitation: {
+          guestName: invitation?.guestName,
+          phone: staffCanSeePhone ? invitation?.phone : undefined,
+          cohort: invitation?.cohort,
+          refLead: invitation?.refLead,
+          maxAttendees: invitation?.maxAttendees,
+        },
+      };
+    });
   }
 
-  async summary(weddingId: string, scope: Prisma.InvitationWhereInput = { weddingId }) {
-    const [invited, rsvps, ceremonies] = await Promise.all([
-      this.prisma.invitation.count({ where: scope }),
-      this.prisma.rsvp.findMany({ where: { invitation: scope } }),
-      this.prisma.ceremony.findMany({ where: { weddingId }, orderBy: { startsAt: 'asc' }, select: { id: true, title: true, startsAt: true } }),
+  async summary(weddingId: string, scope: FilterQuery<Invitation> = { weddingId }) {
+    const invitations = await this.invitationsInScope(scope);
+    const [rsvps, ceremonies] = await Promise.all([
+      RsvpModel.find({ invitationId: { $in: invitations.map((inv) => inv._id) } }),
+      CeremonyModel.find({ weddingId }).sort({ startsAt: 1 }).select('title startsAt'),
     ]);
+    const invited = invitations.length;
     const out = {
       invited,
       responded: rsvps.length,
@@ -165,7 +192,7 @@ export class RsvpService {
       declined: 0,
       maybe: 0,
       headcount: { adults: 0, children: 0, infants: 0, total: 0 },
-      byCeremony: ceremonies.map((c) => ({ ...c, adults: 0, children: 0, infants: 0, total: 0 })),
+      byCeremony: ceremonies.map((c) => ({ id: c.id, title: c.title, startsAt: c.startsAt, adults: 0, children: 0, infants: 0, total: 0 })),
       dietary: {} as Record<string, number>,
       accommodation: 0,
       shuttle: 0,
@@ -178,8 +205,9 @@ export class RsvpService {
       out.headcount.adults += r.adults;
       out.headcount.children += r.children;
       out.headcount.infants += r.infants;
+      const attending = new Set(idStrings(r.attendingCeremonyIds));
       for (const c of out.byCeremony) {
-        if (!r.attendingCeremonyIds.includes(c.id)) continue;
+        if (!attending.has(c.id)) continue;
         c.adults += r.adults;
         c.children += r.children;
         c.infants += r.infants;
@@ -200,7 +228,7 @@ export class RsvpService {
   async exportCsv(access: WeddingAccess) {
     const [rows, ceremonies] = await Promise.all([
       this.list(access),
-      this.prisma.ceremony.findMany({ where: { weddingId: access.wedding.id }, select: { id: true, title: true } }),
+      CeremonyModel.find({ weddingId: access.wedding._id }).select('title'),
     ]);
     const titles = new Map(ceremonies.map((c) => [c.id, c.title]));
     return toCsv(
@@ -228,5 +256,30 @@ export class RsvpService {
         r.updatedAt,
       ]),
     );
+  }
+
+  private rsvpPlain(r: RsvpDoc) {
+    return {
+      id: r.id,
+      weddingId: idString(r.weddingId),
+      invitationId: idString(r.invitationId),
+      status: r.status,
+      adults: r.adults,
+      children: r.children,
+      infants: r.infants,
+      attendingCeremonyIds: idStrings(r.attendingCeremonyIds),
+      dietary: r.dietary,
+      allergies: r.allergies,
+      arrivalMode: r.arrivalMode,
+      arrivalDetails: r.arrivalDetails,
+      arrivalAt: r.arrivalAt,
+      needsAccommodation: r.needsAccommodation,
+      checkInDate: r.checkInDate,
+      checkOutDate: r.checkOutDate,
+      needsShuttle: r.needsShuttle,
+      note: r.note,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
   }
 }

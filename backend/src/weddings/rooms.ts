@@ -1,4 +1,5 @@
-import type { Tx } from '../prisma/prisma.service.js';
+import type { ClientSession } from 'mongoose';
+import { FloorTileModel, RoomZoneModel } from '../models/schemas.js';
 
 export interface RoomInput {
   key: string;
@@ -19,23 +20,27 @@ export const DEFAULT_2BHK_ROOMS: RoomInput[] = [
 ];
 
 /** Creates rooms and one tile per square foot, numbered continuously across rooms. */
-export async function createRoomsAndTiles(tx: Tx, weddingId: string, rooms: RoomInput[]) {
+export async function createRoomsAndTiles(session: ClientSession, weddingId: string, rooms: RoomInput[]) {
   let index = 0;
   for (const [sortOrder, room] of rooms.entries()) {
-    const created = await tx.roomZone.create({
-      data: {
-        weddingId,
-        key: room.key,
-        name: room.name,
-        sft: room.sft,
-        description: room.description ?? null,
-        icon: room.icon ?? null,
-        sortOrder,
-      },
-    });
-    const tiles = Array.from({ length: room.sft }, () => ({ weddingId, roomId: created.id, index: index++ }));
+    const [created] = await RoomZoneModel.create(
+      [
+        {
+          weddingId,
+          key: room.key,
+          name: room.name,
+          sft: room.sft,
+          description: room.description ?? null,
+          icon: room.icon ?? null,
+          sortOrder,
+        },
+      ],
+      { session },
+    );
+    if (!created) throw new Error('Failed to create room');
+    const tiles = Array.from({ length: room.sft }, () => ({ weddingId, roomId: created._id, index: index++ }));
     for (let i = 0; i < tiles.length; i += 1000) {
-      await tx.floorTile.createMany({ data: tiles.slice(i, i + 1000) });
+      await FloorTileModel.insertMany(tiles.slice(i, i + 1000), { session });
     }
   }
   return index;

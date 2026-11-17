@@ -11,6 +11,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Queue } from 'bullmq';
+import type { Types } from 'mongoose';
 import type { WeddingAccess } from '../access/wedding-access.service.js';
 import { ADMIN_ROLES } from '../access/wedding-access.service.js';
 import { LinkTokenService } from '../auth/link-token.service.js';
@@ -18,10 +19,23 @@ import type { AuthUser } from '../common/auth.js';
 import { randomCode } from '../common/utils/crypto.js';
 import { initialsOf } from '../common/utils/format.js';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import type { Contribution, ContributionStatus, RoomZone, StageDisplayMode, Wedding } from '../generated/prisma/client.js';
+import { idString, oid, sameId, withTransaction } from '../database/helpers.js';
 import { QUEUES } from '../jobs/queues.js';
+import { ROOM_ZONES } from '../models/schemas.js';
+import {
+  ContributionModel,
+  FloorTileModel,
+  LedgerEntryModel,
+  RoomZoneModel,
+  UserModel,
+  WeddingMemberModel,
+  WeddingModel,
+  type ContributionDoc,
+  type RoomZoneDoc,
+  type WeddingDoc,
+} from '../models/schemas.js';
+import type { ContributionStatus, StageDisplayMode } from '../models/types.js';
 import { PAYMENT_PROVIDER, type PaymentProvider } from '../payments/providers/payment-provider.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeService, rooms as liveRooms } from '../realtime/realtime.service.js';
 import { RedisService } from '../redis/redis.service.js';
 
@@ -39,7 +53,14 @@ export interface LockTilesInput {
 const MAX_OPEN_HOLDS_PER_USER = 3;
 export const ANONYMOUS_NAME = 'A Well-Wisher';
 
-type ContributionWithRoom = Contribution & { room: RoomZone };
+interface RoomRef {
+  key: string;
+  name: string;
+}
+
+interface ContributionWithRoom extends ContributionDoc {
+  room: RoomRef;
+}
 
 @Injectable()
 export class RegistryService {
@@ -47,7 +68,6 @@ export class RegistryService {
 
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly realtime: RealtimeService,
     private readonly links: LinkTokenService,
@@ -57,37 +77,31 @@ export class RegistryService {
 
   private lockKey = (weddingId: string) => `lock:registry:${weddingId}`;
 
-  // ---------------------------------------------------------------- reads
+  private availableTiles(now: Date) {
+    return { $or: [{ status: 'OPEN' }, { status: 'HOLD', lockedUntil: { $lt: now } }] };
+  }
 
-  /** Full floor-plan state: per-room totals plus a compact per-tile status string. */
   async state(weddingId: string) {
-    const wedding = await this.prisma.wedding.findUniqueOrThrow({ where: { id: weddingId } });
+    const wedding = await WeddingModel.findById(weddingId);
+    if (!wedding) throw new NotFoundException('Wedding not found');
     const [rooms, tiles] = await Promise.all([
-      this.prisma.roomZone.findMany({ where: { weddingId }, orderBy: { sortOrder: 'asc' } }),
-      this.prisma.floorTile.findMany({
-        where: { weddingId },
-        orderBy: { index: 'asc' },
-        select: {
-          index: true,
-          roomId: true,
-          status: true,
-          lockedUntil: true,
-          contribution: { select: { donorName: true, anonymous: true } },
-        },
-      }),
+      RoomZoneModel.find({ weddingId }).sort({ sortOrder: 1 }),
+      FloorTileModel.find({ weddingId }).sort({ index: 1 }).populate<{ contribution: { donorName: string; anonymous: boolean } | null }>('contribution', 'donorName anonymous'),
     ]);
     const now = Date.now();
     const byRoom = new Map(
       rooms.map((r) => [r.id, { cells: [] as string[], donors: {} as Record<number, string>, startIndex: -1, funded: 0, held: 0 }]),
     );
     for (const t of tiles) {
-      const bucket = byRoom.get(t.roomId)!;
+      const bucket = byRoom.get(idString(t.roomId));
+      if (!bucket) continue;
       if (bucket.startIndex < 0) bucket.startIndex = t.index;
+      const contribution = t.get('contribution') as { donorName: string; anonymous: boolean } | null | undefined;
       let code = 'O';
       if (t.status === 'FUNDED') {
         code = 'F';
         bucket.funded++;
-        if (t.contribution) bucket.donors[t.index] = t.contribution.anonymous ? '♥' : initialsOf(t.contribution.donorName);
+        if (contribution) bucket.donors[t.index] = contribution.anonymous ? '♥' : initialsOf(contribution.donorName);
       } else if (t.status === 'HOLD' && t.lockedUntil && t.lockedUntil.getTime() > now) {
         code = 'H';
         bucket.held++;
@@ -129,11 +143,11 @@ export class RegistryService {
     };
   }
 
-  async summary(wedding: Wedding) {
+  async summary(wedding: WeddingDoc) {
     const now = new Date();
     const [funded, held] = await Promise.all([
-      this.prisma.floorTile.count({ where: { weddingId: wedding.id, status: 'FUNDED' } }),
-      this.prisma.floorTile.count({ where: { weddingId: wedding.id, status: 'HOLD', lockedUntil: { gt: now } } }),
+      FloorTileModel.countDocuments({ weddingId: wedding._id, status: 'FUNDED' }),
+      FloorTileModel.countDocuments({ weddingId: wedding._id, status: 'HOLD', lockedUntil: { $gt: now } }),
     ]);
     return {
       totalSft: wedding.totalSft,
@@ -149,21 +163,19 @@ export class RegistryService {
   }
 
   private async raisedPaise(weddingId: string) {
-    const agg = await this.prisma.contribution.aggregate({
-      where: { weddingId, status: 'SUCCESS' },
-      _sum: { amountPaise: true },
-    });
-    return agg._sum.amountPaise ?? 0;
+    const [row] = await ContributionModel.aggregate<{ amount: number }>([
+      { $match: { weddingId: oid(weddingId), status: 'SUCCESS' } },
+      { $group: { _id: null, amount: { $sum: '$amountPaise' } } },
+    ]);
+    return row?.amount ?? 0;
   }
 
-  async donorWall(wedding: Wedding, limit = 50, mode: StageDisplayMode = 'NAMES_AND_BLESSINGS') {
-    const rows = await this.prisma.contribution.findMany({
-      where: { weddingId: wedding.id, status: 'SUCCESS' },
-      orderBy: { paidAt: 'desc' },
-      take: limit,
-      include: { room: true },
-    });
-    return rows.map((c) => this.wallEntry(c, mode));
+  async donorWall(wedding: WeddingDoc, limit = 50, mode: StageDisplayMode = 'NAMES_AND_BLESSINGS') {
+    const rows = await ContributionModel.find({ weddingId: wedding._id, status: 'SUCCESS' })
+      .sort({ paidAt: -1 })
+      .limit(limit)
+      .populate<{ room: RoomZoneDoc }>('room');
+    return rows.map((c) => this.wallEntry(this.withRoom(c), mode));
   }
 
   wallEntry(c: ContributionWithRoom, mode: StageDisplayMode = 'NAMES_AND_BLESSINGS') {
@@ -182,41 +194,42 @@ export class RegistryService {
   }
 
   async listContributions(weddingId: string, status?: ContributionStatus) {
-    const rows = await this.prisma.contribution.findMany({
-      where: { weddingId, ...(status ? { status } : {}) },
-      orderBy: { createdAt: 'desc' },
-      include: { room: true },
-      take: 1000,
-    });
-    return rows.map((c) => this.ownerView(c));
+    const rows = await ContributionModel.find({ weddingId, ...(status ? { status } : {}) })
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .populate('room');
+    return rows.map((c) => this.ownerView(this.withRoom(c)));
   }
 
   async myContributions(user: AuthUser, weddingId: string) {
-    const rows = await this.prisma.contribution.findMany({
-      where: { weddingId, userId: user.id, status: { in: ['SUCCESS', 'PENDING', 'REFUND_REQUIRED'] } },
-      orderBy: { createdAt: 'desc' },
-      include: { room: true },
+    const rows = await ContributionModel.find({
+      weddingId,
+      userId: user.id,
+      status: { $in: ['SUCCESS', 'PENDING', 'REFUND_REQUIRED'] },
+    })
+      .sort({ createdAt: -1 })
+      .populate('room');
+    return rows.map((c) => {
+      const view = this.withRoom(c);
+      return { ...this.ownerView(view), links: this.linksFor(view) };
     });
-    return rows.map((c) => ({ ...this.ownerView(c), links: this.linksFor(c) }));
   }
 
   async getContribution(user: AuthUser, id: string) {
-    const c = await this.prisma.contribution.findUnique({
-      where: { id },
-      include: { room: true, wedding: true, tiles: { select: { index: true }, orderBy: { index: 'asc' } } },
-    });
+    const c = await ContributionModel.findById(id).populate('room').populate<{ wedding: WeddingDoc }>('wedding').populate('tiles');
     if (!c) throw new NotFoundException('Contribution not found');
-    if (c.userId !== user.id) {
-      const member = await this.prisma.weddingMember.findUnique({
-        where: { weddingId_userId: { weddingId: c.weddingId, userId: user.id } },
-      });
+    if (!sameId(c.userId, user.id)) {
+      const member = await WeddingMemberModel.findOne({ weddingId: c.weddingId, userId: user.id });
       if (!member || !ADMIN_ROLES.includes(member.role)) throw new NotFoundException('Contribution not found');
     }
+    const tiles = (c.get('tiles') as { index: number }[] | undefined) ?? [];
+    const wedding = c.get('wedding') as WeddingDoc;
+    const view = this.withRoom(c);
     return {
-      ...this.ownerView(c),
-      tileIndexes: c.status === 'SUCCESS' ? c.tiles.map((t) => t.index) : [],
-      wedding: { slug: c.wedding.slug, brideName: c.wedding.brideName, groomName: c.wedding.groomName },
-      links: this.linksFor(c),
+      ...this.ownerView(view),
+      tileIndexes: c.status === 'SUCCESS' ? tiles.map((t) => t.index).sort((a, b) => a - b) : [],
+      wedding: { slug: wedding.slug, brideName: wedding.brideName, groomName: wedding.groomName },
+      links: this.linksFor(view),
     };
   }
 
@@ -246,7 +259,7 @@ export class RegistryService {
     };
   }
 
-  linksFor(c: Pick<Contribution, 'id' | 'status' | 'holdExpiresAt'>) {
+  linksFor(c: Pick<ContributionDoc, 'id' | 'status' | 'holdExpiresAt'>) {
     const web = this.env.WEB_PUBLIC_URL.replace(/\/$/, '');
     const api = this.env.API_PUBLIC_URL.replace(/\/$/, '');
     const holdLeftSec = Math.max(0, Math.ceil((c.holdExpiresAt.getTime() - Date.now()) / 1000));
@@ -261,19 +274,20 @@ export class RegistryService {
     };
   }
 
-  // ---------------------------------------------------------------- writes
-
   async lockTiles(access: WeddingAccess, input: LockTilesInput) {
     const { wedding, user, invitation } = access;
     if (access.role === 'GUEST' && invitation && !invitation.enableRegistry) {
       throw new ForbiddenException({ code: 'REGISTRY_DISABLED', message: 'The gift registry is not enabled for your invitation' });
     }
-    const room = await this.prisma.roomZone.findUnique({ where: { weddingId_key: { weddingId: wedding.id, key: input.roomKey } } });
+    const room = await RoomZoneModel.findOne({ weddingId: wedding._id, key: input.roomKey });
     if (!room) throw new NotFoundException('Room not found');
 
     const now = new Date();
-    const openHolds = await this.prisma.contribution.count({
-      where: { userId: user.id, weddingId: wedding.id, status: 'PENDING', holdExpiresAt: { gt: now } },
+    const openHolds = await ContributionModel.countDocuments({
+      userId: user.id,
+      weddingId: wedding._id,
+      status: 'PENDING',
+      holdExpiresAt: { $gt: now },
     });
     if (openHolds >= MAX_OPEN_HOLDS_PER_USER) {
       throw new HttpException(
@@ -282,19 +296,17 @@ export class RegistryService {
       );
     }
 
-    const profile = await this.prisma.user.findUnique({ where: { id: user.id } });
+    const profile = await UserModel.findById(user.id);
     const donorName = (input.donorName || invitation?.guestName || profile?.name || 'Loving Guest').trim();
     const holdExpiresAt = new Date(now.getTime() + wedding.cartHoldTtlSec * 1000);
 
     const contribution = await this.redis.withLock(this.lockKey(wedding.id), () =>
-      this.prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "FloorTile"
-          WHERE "roomId" = ${room.id}::uuid
-            AND (status = 'OPEN' OR (status = 'HOLD' AND "lockedUntil" < ${now}))
-          ORDER BY index
-          LIMIT ${input.units}
-          FOR UPDATE SKIP LOCKED`;
+      withTransaction(async (session) => {
+        const rows = await FloorTileModel.find({ roomId: room._id, ...this.availableTiles(now) })
+          .sort({ index: 1 })
+          .limit(input.units)
+          .select('_id')
+          .session(session);
         if (rows.length < input.units) {
           throw new ConflictException({
             code: 'INSUFFICIENT_SFT',
@@ -304,30 +316,41 @@ export class RegistryService {
             available: rows.length,
           });
         }
-        const created = await tx.contribution.create({
-          data: {
-            weddingId: wedding.id,
-            userId: user.id,
-            roomId: room.id,
-            units: input.units,
-            ratePaise: wedding.ratePerSftPaise,
-            amountPaise: input.units * wedding.ratePerSftPaise,
-            donorName,
-            donorPhone: user.phone,
-            relationship: input.relationship?.trim() || null,
-            blessing: input.blessing?.trim() || null,
-            anonymous: input.anonymous ?? false,
-            tableNumber: input.tableNumber?.trim() || null,
-            refLead: input.refLead?.trim() || invitation?.refLead || null,
-            provider: this.provider.name,
-            holdExpiresAt,
-          },
-          include: { room: true },
-        });
-        await tx.floorTile.updateMany({
-          where: { id: { in: rows.map((r) => r.id) } },
-          data: { status: 'HOLD', lockedUntil: holdExpiresAt, contributionId: created.id },
-        });
+        const [created] = await ContributionModel.create(
+          [
+            {
+              weddingId: wedding._id,
+              userId: user.id,
+              roomId: room._id,
+              units: input.units,
+              ratePaise: wedding.ratePerSftPaise,
+              amountPaise: input.units * wedding.ratePerSftPaise,
+              donorName,
+              donorPhone: user.phone,
+              relationship: input.relationship?.trim() || null,
+              blessing: input.blessing?.trim() || null,
+              anonymous: input.anonymous ?? false,
+              tableNumber: input.tableNumber?.trim() || null,
+              refLead: input.refLead?.trim() || invitation?.refLead || null,
+              provider: this.provider.name,
+              holdExpiresAt,
+            },
+          ],
+          { session },
+        );
+        if (!created) throw new Error('Failed to create contribution');
+        const claimed = await FloorTileModel.updateMany(
+          { _id: { $in: rows.map((row) => row._id) }, ...this.availableTiles(now) },
+          { $set: { status: 'HOLD', lockedUntil: holdExpiresAt, contributionId: created._id } },
+          { session },
+        );
+        if (claimed.modifiedCount < input.units) {
+          throw new ConflictException({
+            code: 'INSUFFICIENT_SFT',
+            message: `Only ${claimed.modifiedCount} sq.ft. are still available in the ${room.name}`,
+            available: claimed.modifiedCount,
+          });
+        }
         return created;
       }),
     );
@@ -338,7 +361,7 @@ export class RegistryService {
         receipt: contribution.id,
         notes: { contributionId: contribution.id, wedding: wedding.slug, room: room.key, units: String(input.units) },
       });
-      await this.prisma.contribution.update({ where: { id: contribution.id }, data: { providerOrderId: order.orderId } });
+      await ContributionModel.updateOne({ _id: contribution._id }, { $set: { providerOrderId: order.orderId } });
     } catch (err) {
       this.logger.error(`Order creation failed for ${contribution.id}: ${(err as Error).message}`);
       await this.releaseTiles(contribution.id, 'FAILED', 'Payment gateway unavailable');
@@ -346,35 +369,38 @@ export class RegistryService {
     }
 
     void this.broadcastState(wedding.id);
-    return { contribution: this.ownerView(contribution), links: this.linksFor(contribution) };
+    const view = Object.assign(contribution, { room });
+    return { contribution: this.ownerView(view), links: this.linksFor(contribution) };
   }
 
   async cancel(user: AuthUser, contributionId: string) {
-    const c = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
-    if (!c || c.userId !== user.id) throw new NotFoundException('Contribution not found');
+    const c = await ContributionModel.findById(contributionId);
+    if (!c || !sameId(c.userId, user.id)) throw new NotFoundException('Contribution not found');
     if (c.status !== 'PENDING') throw new ConflictException('Only pending gifts can be cancelled');
     await this.releaseTiles(c.id, 'CANCELLED');
-    void this.broadcastState(c.weddingId);
+    void this.broadcastState(idString(c.weddingId));
   }
 
   async markFailed(contributionId: string, reason: string) {
-    const c = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
+    const c = await ContributionModel.findById(contributionId);
     if (!c || c.status !== 'PENDING') return;
     await this.releaseTiles(c.id, 'FAILED', reason);
-    void this.broadcastState(c.weddingId);
+    void this.broadcastState(idString(c.weddingId));
   }
 
   private async releaseTiles(contributionId: string, status: 'FAILED' | 'CANCELLED' | 'EXPIRED', reason?: string) {
-    await this.prisma.$transaction([
-      this.prisma.floorTile.updateMany({
-        where: { contributionId, status: 'HOLD' },
-        data: { status: 'OPEN', lockedUntil: null, contributionId: null },
-      }),
-      this.prisma.contribution.updateMany({
-        where: { id: contributionId, status: 'PENDING' },
-        data: { status, failureReason: reason ?? null },
-      }),
-    ]);
+    await withTransaction(async (session) => {
+      await FloorTileModel.updateMany(
+        { contributionId, status: 'HOLD' },
+        { $set: { status: 'OPEN', lockedUntil: null, contributionId: null } },
+        { session },
+      );
+      await ContributionModel.updateMany(
+        { _id: contributionId, status: 'PENDING' },
+        { $set: { status, failureReason: reason ?? null } },
+        { session },
+      );
+    });
   }
 
   /**
@@ -382,75 +408,100 @@ export class RegistryService {
    * contribution are funded; if its hold lapsed, equivalent open tiles are
    * allocated (same room first). When nothing is left the contribution is
    * flagged REFUND_REQUIRED for the finance team.
+   *
+   * Postgres used `FOR UPDATE SKIP LOCKED`. MongoDB has no row lock skip, so
+   * the per-wedding Redis lock plus a conditional update inside a transaction
+   * keeps two checkouts from funding the same square foot.
    */
   async confirmPaid(contributionId: string, paymentId: string) {
-    const existing = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
+    const existing = await ContributionModel.findById(contributionId);
     if (!existing) throw new NotFoundException('Contribution not found');
     if (existing.status === 'SUCCESS' || existing.status === 'REFUND_REQUIRED') {
       return { contribution: existing, alreadyProcessed: true };
     }
 
-    const result = await this.redis.withLock(this.lockKey(existing.weddingId), () =>
-      this.prisma.$transaction(async (tx) => {
-        const c = await tx.contribution.findUniqueOrThrow({ where: { id: contributionId } });
+    const result = await this.redis.withLock(this.lockKey(idString(existing.weddingId)), () =>
+      withTransaction(async (session) => {
+        const c = await ContributionModel.findById(contributionId).session(session);
+        if (!c) throw new NotFoundException('Contribution not found');
         if (c.status === 'SUCCESS' || c.status === 'REFUND_REQUIRED') return { contribution: c, alreadyProcessed: true };
         const now = new Date();
 
-        const held = await tx.floorTile.findMany({ where: { contributionId: c.id, status: 'HOLD' }, select: { id: true } });
-        const tileIds = held.map((t) => t.id).slice(0, c.units);
+        const held = await FloorTileModel.find({ contributionId: c._id, status: 'HOLD' }).select('_id').session(session);
+        const tileIds: Types.ObjectId[] = held.map((t) => t._id).slice(0, c.units);
         if (tileIds.length < c.units) {
-          const extra = await tx.$queryRaw<{ id: string }[]>`
-            SELECT t.id FROM "FloorTile" t
-            JOIN "RoomZone" r ON r.id = t."roomId"
-            WHERE t."weddingId" = ${c.weddingId}::uuid
-              AND (t.status = 'OPEN' OR (t.status = 'HOLD' AND t."lockedUntil" < ${now}))
-              AND t."contributionId" IS DISTINCT FROM ${c.id}::uuid
-            ORDER BY (t."roomId" = ${c.roomId}::uuid) DESC, r."sortOrder", t.index
-            LIMIT ${c.units - tileIds.length}
-            FOR UPDATE OF t SKIP LOCKED`;
-          tileIds.push(...extra.map((t) => t.id));
+          const extra = await FloorTileModel.aggregate<{ _id: Types.ObjectId }>([
+            {
+              $match: {
+                weddingId: c.weddingId,
+                _id: { $nin: tileIds },
+                contributionId: { $ne: c._id },
+                ...this.availableTiles(now),
+              },
+            },
+            { $lookup: { from: ROOM_ZONES, localField: 'roomId', foreignField: '_id', as: 'room' } },
+            { $unwind: '$room' },
+            { $addFields: { sameRoom: { $cond: [{ $eq: ['$roomId', c.roomId] }, 1, 0] } } },
+            { $sort: { sameRoom: -1, 'room.sortOrder': 1, index: 1 } },
+            { $limit: c.units - tileIds.length },
+            { $project: { _id: 1 } },
+          ]).session(session);
+          tileIds.push(...extra.map((t) => t._id));
         }
 
         if (tileIds.length < c.units) {
-          await tx.floorTile.updateMany({
-            where: { contributionId: c.id, status: 'HOLD' },
-            data: { status: 'OPEN', lockedUntil: null, contributionId: null },
-          });
-          const flagged = await tx.contribution.update({
-            where: { id: c.id },
-            data: {
-              status: 'REFUND_REQUIRED',
-              providerPaymentId: paymentId,
-              paidAt: now,
-              failureReason: 'Payment received after the registry was fully gifted',
+          await FloorTileModel.updateMany(
+            { contributionId: c._id, status: 'HOLD' },
+            { $set: { status: 'OPEN', lockedUntil: null, contributionId: null } },
+            { session },
+          );
+          const flagged = await ContributionModel.findByIdAndUpdate(
+            c._id,
+            {
+              $set: {
+                status: 'REFUND_REQUIRED',
+                providerPaymentId: paymentId,
+                paidAt: now,
+                failureReason: 'Payment received after the registry was fully gifted',
+              },
             },
-          });
+            { new: true, session },
+          );
+          if (!flagged) throw new NotFoundException('Contribution not found');
           return { contribution: flagged, alreadyProcessed: false };
         }
 
-        await tx.floorTile.updateMany({
-          where: { id: { in: tileIds } },
-          data: { status: 'FUNDED', lockedUntil: null, contributionId: c.id },
-        });
-        const paid = await tx.contribution.update({
-          where: { id: c.id },
-          data: {
-            status: 'SUCCESS',
-            providerPaymentId: paymentId,
-            paidAt: now,
-            failureReason: null,
-            receiptNumber: `PTF-${now.getFullYear()}-${randomCode(8).toUpperCase()}`,
+        await FloorTileModel.updateMany(
+          { _id: { $in: tileIds } },
+          { $set: { status: 'FUNDED', lockedUntil: null, contributionId: c._id } },
+          { session },
+        );
+        const paid = await ContributionModel.findByIdAndUpdate(
+          c._id,
+          {
+            $set: {
+              status: 'SUCCESS',
+              providerPaymentId: paymentId,
+              paidAt: now,
+              failureReason: null,
+              receiptNumber: `PTF-${now.getFullYear()}-${randomCode(8).toUpperCase()}`,
+            },
           },
-        });
-        await tx.ledgerEntry.create({
-          data: {
-            weddingId: c.weddingId,
-            contributionId: c.id,
-            type: 'CREDIT',
-            amountPaise: c.amountPaise,
-            reference: paymentId,
-          },
-        });
+          { new: true, session },
+        );
+        if (!paid) throw new NotFoundException('Contribution not found');
+        await LedgerEntryModel.create(
+          [
+            {
+              weddingId: c.weddingId,
+              contributionId: c._id,
+              type: 'CREDIT',
+              amountPaise: c.amountPaise,
+              reference: paymentId,
+            },
+          ],
+          { session },
+        );
         return { contribution: paid, alreadyProcessed: false };
       }),
     );
@@ -462,7 +513,7 @@ export class RegistryService {
       } else {
         this.logger.warn(`Contribution ${contributionId} needs a refund: registry fully funded`);
       }
-      void this.broadcastState(result.contribution.weddingId);
+      void this.broadcastState(idString(result.contribution.weddingId));
     }
     return result;
   }
@@ -470,21 +521,17 @@ export class RegistryService {
   /** Releases expired checkout holds. Runs on a BullMQ job scheduler (one instance at a time). */
   async expireHolds() {
     const now = new Date();
-    const affected = await this.prisma.floorTile.findMany({
-      where: { status: 'HOLD', lockedUntil: { lt: now } },
-      distinct: ['weddingId'],
-      select: { weddingId: true },
-    });
-    const tiles = await this.prisma.floorTile.updateMany({
-      where: { status: 'HOLD', lockedUntil: { lt: now } },
-      data: { status: 'OPEN', lockedUntil: null, contributionId: null },
-    });
-    const contributions = await this.prisma.contribution.updateMany({
-      where: { status: 'PENDING', holdExpiresAt: { lt: now } },
-      data: { status: 'EXPIRED', failureReason: 'Checkout hold expired' },
-    });
-    for (const { weddingId } of affected) void this.broadcastState(weddingId);
-    return { releasedTiles: tiles.count, expiredContributions: contributions.count };
+    const affected = await FloorTileModel.distinct('weddingId', { status: 'HOLD', lockedUntil: { $lt: now } });
+    const tiles = await FloorTileModel.updateMany(
+      { status: 'HOLD', lockedUntil: { $lt: now } },
+      { $set: { status: 'OPEN', lockedUntil: null, contributionId: null } },
+    );
+    const contributions = await ContributionModel.updateMany(
+      { status: 'PENDING', holdExpiresAt: { $lt: now } },
+      { $set: { status: 'EXPIRED', failureReason: 'Checkout hold expired' } },
+    );
+    for (const weddingId of affected) void this.broadcastState(idString(weddingId));
+    return { releasedTiles: tiles.modifiedCount, expiredContributions: contributions.modifiedCount };
   }
 
   async broadcastState(weddingId: string) {
@@ -497,10 +544,19 @@ export class RegistryService {
   }
 
   private async announceFunded(contributionId: string) {
-    const c = await this.prisma.contribution.findUnique({ where: { id: contributionId }, include: { room: true, wedding: true } });
+    const c = await ContributionModel.findById(contributionId).populate('room').populate<{ wedding: WeddingDoc }>('wedding');
     if (!c) return;
-    this.realtime.emit(liveRooms.wedding(c.weddingId), 'contribution.funded', this.wallEntry(c));
-    this.realtime.emit(liveRooms.stage(c.weddingId), 'contribution.funded', this.wallEntry(c, c.wedding.stageDisplayMode));
-    this.realtime.emit(liveRooms.admin(c.weddingId), 'contribution.funded', this.ownerView(c));
+    const wedding = c.get('wedding') as WeddingDoc | undefined;
+    if (!wedding) return;
+    const view = this.withRoom(c);
+    this.realtime.emit(liveRooms.wedding(idString(c.weddingId)), 'contribution.funded', this.wallEntry(view));
+    this.realtime.emit(liveRooms.stage(idString(c.weddingId)), 'contribution.funded', this.wallEntry(view, wedding.stageDisplayMode));
+    this.realtime.emit(liveRooms.admin(idString(c.weddingId)), 'contribution.funded', this.ownerView(view));
+  }
+
+  private withRoom(c: ContributionDoc): ContributionWithRoom {
+    const room = c.get('room') as RoomRef | undefined;
+    if (!room?.key) throw new Error('Contribution room was not populated');
+    return Object.assign(c, { room });
   }
 }

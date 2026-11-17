@@ -1,11 +1,22 @@
-import type { Contribution, RoomZone } from '../generated/prisma/client.js';
+import { idString } from '../database/helpers.js';
 
 /** Canonical, order-stable representation that the receipt hash commits to. */
-export function canonicalReceipt(c: Contribution & { room: Pick<RoomZone, 'key'> }) {
+export function canonicalReceipt(c: {
+  id: string;
+  receiptNumber: string | null;
+  weddingId: unknown;
+  donorName: string;
+  units: number;
+  ratePaise: number;
+  amountPaise: number;
+  room: { key: string };
+  paidAt: Date | null;
+  providerPaymentId: string | null;
+}) {
   return JSON.stringify({
     receiptNumber: c.receiptNumber,
     contributionId: c.id,
-    weddingId: c.weddingId,
+    weddingId: idString(c.weddingId),
     donorName: c.donorName,
     units: c.units,
     ratePaise: c.ratePaise,

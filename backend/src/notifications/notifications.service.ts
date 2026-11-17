@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { NotificationLogModel } from '../models/schemas.js';
 import { SmsService } from './sms.service.js';
 import { WhatsAppService, type SendResult, type TemplateMessage } from './whatsapp.service.js';
 
@@ -25,7 +25,6 @@ export class NotificationsService {
 
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
     private readonly sms: SmsService,
   ) {}
@@ -137,8 +136,14 @@ export class NotificationsService {
     error?: string,
   ) {
     const safePayload = template === this.env.WHATSAPP_TEMPLATE_OTP ? { redacted: true } : payload;
-    await this.prisma.notificationLog
-      .create({ data: { channel, recipient, template, payload: safePayload, status, providerMessageId, error } })
-      .catch((e: Error) => this.logger.error(`Failed to write notification log: ${e.message}`));
+    await NotificationLogModel.create({
+      channel,
+      recipient,
+      template,
+      payload: safePayload,
+      status,
+      providerMessageId: providerMessageId ?? null,
+      error: error ?? null,
+    }).catch((e: Error) => this.logger.error(`Failed to write notification log: ${e.message}`));
   }
 }

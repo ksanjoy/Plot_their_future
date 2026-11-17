@@ -1,8 +1,9 @@
 import { validateEnv } from './env.js';
 
 const base = {
-  DATABASE_URL: 'postgresql://ptf:ptf@localhost:5432/ptf',
+  MONGODB_URI: 'mongodb+srv://user:pass@cluster.example.net/ptf',
   REDIS_URL: 'redis://localhost:6379',
+  JWT_SECRET: 'your_jwt_secret',
   JWT_ACCESS_SECRET: 'a'.repeat(32),
   JWT_LINK_SECRET: 'b'.repeat(32),
   OTP_PEPPER: 'c'.repeat(32),
@@ -12,7 +13,7 @@ const base = {
 describe('validateEnv', () => {
   it('applies development defaults', () => {
     const env = validateEnv(base);
-    expect(env.PORT).toBe(4000);
+    expect(env.PORT).toBe(5000);
     expect(env.PAYMENT_PROVIDER).toBe('mock');
     expect(env.WHATSAPP_DRIVER).toBe('console');
   });

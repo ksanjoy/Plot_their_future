@@ -2,10 +2,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import { STAFF_ROLES, type WeddingAccess } from '../access/wedding-access.service.js';
-import type { Ceremony, Wedding } from '../generated/prisma/client.js';
 import { QUEUES } from '../jobs/queues.js';
+import { deleteCeremonyCascade } from '../models/cascades.js';
+import { CeremonyModel, InvitationCeremonyModel, InvitationModel, RsvpModel, type CeremonyDoc, type WeddingDoc } from '../models/schemas.js';
 import { formatCeremonyTime, NotificationsService } from '../notifications/notifications.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 
 export interface CeremonyInput {
   title: string;
@@ -27,59 +27,57 @@ export class CeremoniesService {
   private readonly logger = new Logger(CeremoniesService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     @InjectQueue(QUEUES.reminders) private readonly reminders: Queue,
   ) {}
 
-  list(access: WeddingAccess) {
+  async list(access: WeddingAccess) {
     const staff = STAFF_ROLES.includes(access.role) || access.role === 'PLATFORM';
-    return this.prisma.ceremony.findMany({
-      where: {
-        weddingId: access.wedding.id,
-        ...(!staff && access.invitation ? { invitations: { some: { invitationId: access.invitation.id } } } : {}),
-      },
-      orderBy: [{ startsAt: 'asc' }, { sortOrder: 'asc' }],
-    });
+    const filter: { weddingId: unknown; _id?: { $in: unknown[] } } = { weddingId: access.wedding._id };
+    if (!staff && access.invitation) {
+      const links = await InvitationCeremonyModel.find({ invitationId: access.invitation._id }).select('ceremonyId');
+      filter._id = { $in: links.map((link) => link.ceremonyId) };
+    }
+    return CeremonyModel.find(filter).sort({ startsAt: 1, sortOrder: 1 });
   }
 
   async create(access: WeddingAccess, input: CeremonyInput) {
-    const ceremony = await this.prisma.ceremony.create({ data: { ...input, weddingId: access.wedding.id } });
+    const ceremony = await CeremonyModel.create({ ...input, weddingId: access.wedding._id });
     await this.scheduleReminder(ceremony);
     return ceremony;
   }
 
   async update(access: WeddingAccess, id: string, input: Partial<CeremonyInput>) {
     await this.find(access.wedding.id, id);
-    const ceremony = await this.prisma.ceremony.update({ where: { id }, data: input });
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    const ceremony = await CeremonyModel.findByIdAndUpdate(id, { $set: patch }, { new: true });
+    if (!ceremony) throw new NotFoundException('Ceremony not found');
     await this.scheduleReminder(ceremony);
     return ceremony;
   }
 
   async remove(access: WeddingAccess, id: string) {
     await this.find(access.wedding.id, id);
-    await this.prisma.ceremony.delete({ where: { id } });
+    await deleteCeremonyCascade(id);
   }
 
   async ics(access: WeddingAccess, id: string) {
     const c = await this.find(access.wedding.id, id);
     if (access.role === 'GUEST' && access.invitation) {
-      const invited = await this.prisma.invitationCeremony.findUnique({
-        where: { invitationId_ceremonyId: { invitationId: access.invitation.id, ceremonyId: id } },
-      });
+      const invited = await InvitationCeremonyModel.findOne({ invitationId: access.invitation._id, ceremonyId: id });
       if (!invited) throw new ForbiddenException('You are not invited to this ceremony');
     }
     return { filename: `${access.wedding.slug}-${c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.ics`, body: toIcs(c, access.wedding) };
   }
 
   private async find(weddingId: string, id: string) {
-    const c = await this.prisma.ceremony.findFirst({ where: { id, weddingId } });
+    const c = await CeremonyModel.findOne({ _id: id, weddingId });
     if (!c) throw new NotFoundException('Ceremony not found');
     return c;
   }
 
   /** One delayed job per (ceremony, start time); a rescheduled ceremony gets a fresh job and stale ones no-op. */
-  private async scheduleReminder(c: Ceremony) {
+  private async scheduleReminder(c: CeremonyDoc) {
     const delay = c.startsAt.getTime() - REMINDER_LEAD_MS - Date.now();
     if (delay <= 0) return;
     await this.reminders.add(
@@ -90,15 +88,17 @@ export class CeremoniesService {
   }
 
   async sendReminders(ceremonyId: string, startsAtIso: string) {
-    const c = await this.prisma.ceremony.findUnique({ where: { id: ceremonyId }, include: { wedding: true } });
+    const c = await CeremonyModel.findById(ceremonyId).populate<{ wedding: WeddingDoc }>('wedding');
     if (!c || c.startsAt.toISOString() !== startsAtIso) return { skipped: true };
-    const invitations = await this.prisma.invitation.findMany({
-      where: {
-        weddingId: c.weddingId,
-        ceremonies: { some: { ceremonyId } },
-        rsvp: { status: 'ATTENDING', attendingCeremonyIds: { has: ceremonyId } },
-      },
-    });
+    const wedding = c.get('wedding') as WeddingDoc | undefined;
+    if (!wedding) return { skipped: true };
+    const links = await InvitationCeremonyModel.find({ ceremonyId: c._id }).select('invitationId');
+    const attending = await RsvpModel.find({
+      invitationId: { $in: links.map((link) => link.invitationId) },
+      status: 'ATTENDING',
+      attendingCeremonyIds: c._id,
+    }).select('invitationId');
+    const invitations = await InvitationModel.find({ _id: { $in: attending.map((row) => row.invitationId) } });
     let sent = 0;
     for (const inv of invitations) {
       try {
@@ -106,7 +106,7 @@ export class CeremoniesService {
           phone: inv.phone,
           guestName: inv.guestName,
           ceremony: c.title,
-          when: formatCeremonyTime(c.startsAt, c.wedding.timezone),
+          when: formatCeremonyTime(c.startsAt, wedding.timezone),
           venue: [c.venueName, c.venueMapsUrl].filter(Boolean).join(' • '),
         });
         sent++;
@@ -121,7 +121,21 @@ export class CeremoniesService {
 const icsDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 const icsText = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 
-export function toIcs(c: Ceremony, w: Wedding): string {
+export function toIcs(
+  c: {
+    id: string;
+    title: string;
+    description: string | null;
+    startsAt: Date;
+    endsAt: Date | null;
+    venueName: string;
+    venueAddress: string | null;
+    venueMapsUrl: string | null;
+    streamUrl: string | null;
+    dressCode: string | null;
+  },
+  w: { brideName: string; groomName: string },
+): string {
   const end = c.endsAt ?? new Date(c.startsAt.getTime() + 3 * 60 * 60 * 1000);
   const location = [c.venueName, c.venueAddress].filter(Boolean).join(', ');
   const description = [c.description, c.dressCode ? `Dress code: ${c.dressCode}` : null, c.venueMapsUrl, c.streamUrl ? `Live stream: ${c.streamUrl}` : null]

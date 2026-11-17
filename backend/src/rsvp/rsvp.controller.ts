@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Header, Param, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { STAFF_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import { RsvpService } from './rsvp.service.js';
@@ -11,7 +12,7 @@ const rsvpSchema = z.object({
   adults: z.number().int().min(0).max(10).default(1),
   children: z.number().int().min(0).max(10).default(0),
   infants: z.number().int().min(0).max(10).default(0),
-  attendingCeremonyIds: z.array(z.uuid()).max(50).default([]),
+  attendingCeremonyIds: z.array(objectId).max(50).default([]),
   dietary: z.array(z.enum(['VEG', 'NON_VEG', 'JAIN', 'VEGAN', 'SATVIK', 'GLUTEN_FREE'])).max(6).default([]),
   allergies: text(200),
   arrivalMode: z.enum(['FLIGHT', 'TRAIN', 'ROAD', 'LOCAL']).nullish(),

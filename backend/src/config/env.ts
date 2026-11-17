@@ -19,15 +19,16 @@ const secret = z.string().min(32, 'must be at least 32 characters');
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    PORT: z.coerce.number().int().positive().default(4000),
-    API_PUBLIC_URL: z.url().default('http://localhost:4000'),
+    PORT: z.coerce.number().int().positive().default(5000),
+    API_PUBLIC_URL: z.url().default('http://localhost:5000'),
     WEB_PUBLIC_URL: z.url().default('http://localhost:3000'),
     CORS_ORIGINS: csv,
     TRUST_PROXY: bool.default(false),
 
-    DATABASE_URL: z.string().min(1),
+    MONGODB_URI: z.string().regex(/^mongodb(\+srv)?:\/\//, 'must be a MongoDB connection string'),
     REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
 
+    JWT_SECRET: z.string().min(1),
     JWT_ACCESS_SECRET: secret,
     JWT_LINK_SECRET: secret,
     OTP_PEPPER: secret,

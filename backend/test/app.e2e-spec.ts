@@ -5,7 +5,9 @@ import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { LinkTokenService } from '../src/auth/link-token.service.js';
 import { ENV, type Env } from '../src/config/config.module.js';
-import { PrismaService } from '../src/prisma/prisma.service.js';
+import mongoose from 'mongoose';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { ContributionModel, FloorTileModel, LedgerEntryModel, RoomZoneModel, WeddingModel } from '../src/models/schemas.js';
 import { RedisService } from '../src/redis/redis.service.js';
 import { RegistryService } from '../src/registry/registry.service.js';
 
@@ -16,7 +18,6 @@ const OUTSIDER = '+919848099002';
 const PLATFORM = '+919000000099';
 
 let app: NestExpressApplication;
-let prisma: PrismaService;
 let http: ReturnType<typeof request>;
 
 async function login(phone: string) {
@@ -43,16 +44,16 @@ beforeAll(async () => {
   app = moduleRef.createNestApplication<NestExpressApplication>({ rawBody: true, logger: ['error'] });
   configureApp(app, app.get<Env>(ENV));
   await app.init();
-  prisma = app.get(PrismaService);
   await app.get(RedisService).client.flushdb();
-  await prisma.$executeRawUnsafe(
-    'TRUNCATE "LedgerEntry","FloorTile","Contribution","Settlement","Wedding","Session","User","NotificationLog","PaymentEvent" CASCADE',
-  );
+  for (const collection of Object.values(mongoose.connection.collections)) {
+    await collection.deleteMany({});
+  }
   http = request(app.getHttpServer());
 });
 
 afterAll(async () => {
   await app?.close();
+  await (globalThis as { __mongo?: MongoMemoryReplSet }).__mongo?.stop();
 });
 
 describe('Plot Their Future API (e2e)', () => {
@@ -103,7 +104,8 @@ describe('Plot Their Future API (e2e)', () => {
         .send({ slug: SLUG, brideName: 'Meera', groomName: 'Aarav', ratePerSft: 4500, presetTiers: [1, 5, 10], weddingDate: '2027-02-14T05:45:00+05:30' })
         .expect(201);
       expect(res.body.slug).toBe(SLUG);
-      expect(await prisma.floorTile.count({ where: { wedding: { slug: SLUG } } })).toBe(1200);
+      const wedding = await WeddingModel.findOne({ slug: SLUG });
+      expect(await FloorTileModel.countDocuments({ weddingId: wedding?._id })).toBe(1200);
     });
 
     it('adds ceremonies and guests', async () => {
@@ -207,11 +209,11 @@ describe('Plot Their Future API (e2e)', () => {
       await http.post(`/api/v1/payments/mock/${id}/complete?t=${t}`).send({ outcome: 'success' }).expect(200);
 
       const sealed = await waitFor(async () => {
-        const c = await prisma.contribution.findUnique({ where: { id } });
+        const c = await ContributionModel.findById(id);
         return c?.receiptHash ? c : null;
       });
       expect(sealed.status).toBe('SUCCESS');
-      expect(await prisma.ledgerEntry.count({ where: { contributionId: id } })).toBe(1);
+      expect(await LedgerEntryModel.countDocuments({ contributionId: id })).toBe(1);
 
       const verify = await http.get(`/api/v1/receipts/verify/${sealed.receiptNumber}`).expect(200);
       expect(verify.body).toMatchObject({ valid: true, units: 10, room: 'Balcony' });
@@ -241,7 +243,9 @@ describe('Plot Their Future API (e2e)', () => {
       );
       const statuses = attempts.map((a) => a.status).sort((a, b) => a - b);
       expect(statuses).toEqual([201, 201, 409]);
-      const held = await prisma.floorTile.count({ where: { wedding: { slug: SLUG }, room: { key: 'balcony' }, status: 'HOLD' } });
+      const wedding = await WeddingModel.findOne({ slug: SLUG });
+      const balcony = await RoomZoneModel.findOne({ weddingId: wedding?._id, key: 'balcony' });
+      const held = await FloorTileModel.countDocuments({ weddingId: wedding?._id, roomId: balcony?._id, status: 'HOLD' });
       expect(held).toBe(60);
       for (const a of attempts.filter((x) => x.status === 201)) {
         await http.delete(`/api/v1/registry/contributions/${a.body.contribution.id}`).set(bearer(guest.accessToken)).expect(204);
@@ -257,12 +261,12 @@ describe('Plot Their Future API (e2e)', () => {
       const id = lock.body.contribution.id as string;
       const t = new URL(lock.body.links.checkoutUrl).searchParams.get('t')!;
       const past = new Date(Date.now() - 1000);
-      await prisma.contribution.update({ where: { id }, data: { holdExpiresAt: past } });
-      await prisma.floorTile.updateMany({ where: { contributionId: id }, data: { lockedUntil: past } });
+      await ContributionModel.updateOne({ _id: id }, { $set: { holdExpiresAt: past } });
+      await FloorTileModel.updateMany({ contributionId: id }, { $set: { lockedUntil: past } });
 
       const result = await app.get(RegistryService).expireHolds();
       expect(result.releasedTiles).toBeGreaterThanOrEqual(5);
-      expect((await prisma.contribution.findUniqueOrThrow({ where: { id } })).status).toBe('EXPIRED');
+      expect((await ContributionModel.findById(id))?.status).toBe('EXPIRED');
       const res = await http.get(`/api/v1/payments/checkout/${id}?t=${t}`).expect(410);
       expect(res.body.code).toBe('HOLD_EXPIRED');
     });

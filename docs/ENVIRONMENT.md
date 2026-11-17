@@ -12,12 +12,12 @@ the file. `ENV_FILE` points the API at a different file.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `NODE_ENV` | `development` | `development`, `test` or `production`. Production refuses `PAYMENT_PROVIDER=mock` and ignores `EXPOSE_DEV_OTP`. |
-| `PORT` | `4000` | HTTP port |
-| `API_PUBLIC_URL` | `http://localhost:4000` | Public URL of the API, used in receipt and media links |
+| `PORT` | `5000` | HTTP port |
+| `API_PUBLIC_URL` | `http://localhost:5000` | Public URL of the API, used in receipt and media links |
 | `WEB_PUBLIC_URL` | `http://localhost:3000` | Public URL of the web app, used in invitation, checkout and receipt links |
 | `CORS_ORIGINS` | *(empty)* | Comma-separated browser origins allowed to call the API (web app, Flutter web) |
 | `TRUST_PROXY` | `0` | Set to `1` behind a load balancer, so client IPs and rate limits are correct |
-| `DATABASE_URL` | — (required) | PostgreSQL connection string |
+| `MONGODB_URI` | — (required) | MongoDB connection string. Use an Atlas SRV URL: `mongodb+srv://<username>:<password>@<cluster-url>/<database-name>`. The deployment must be a replica set (Atlas clusters are). The API does not log this value. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis used for queues, locks, OTP throttling and Socket.IO fan-out. `rediss://` enables TLS. |
 | `RUN_WORKERS` | `1` | Run BullMQ workers (dispatch, receipts, reminders, hold expiry) in this process |
 
@@ -25,6 +25,7 @@ the file. `ENV_FILE` points the API at a different file.
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `JWT_SECRET` | — (required) | Required at boot so a deployment cannot start without it. Access tokens are signed with `JWT_ACCESS_SECRET`, not this value. |
 | `JWT_ACCESS_SECRET` | — (required, 32+ characters) | Signs access tokens |
 | `JWT_LINK_SECRET` | — (required, 32+ characters) | Signs checkout and receipt links |
 | `OTP_PEPPER` | — (required, 32+ characters) | Peppers OTP hashes |
@@ -82,14 +83,10 @@ Generate secrets with `openssl rand -hex 32`.
 
 ### Test-only variables
 
-The e2e tests (`pnpm test:e2e`) read `TEST_DATABASE_URL` (default
-`postgresql://ptf:ptf@localhost:5432/ptf_test`) and `TEST_REDIS_URL` (default
-`redis://localhost:6379/15`). The suite truncates its tables, so never point it at real data.
-Apply migrations to the test database first:
-
-```bash
-DATABASE_URL=$TEST_DATABASE_URL pnpm db:migrate
-```
+The e2e tests (`pnpm test:e2e`) start an in-memory MongoDB replica set
+(`mongodb-memory-server`) and set `MONGODB_URI` to it, so they never write to Atlas.
+They read `TEST_REDIS_URL` (default `redis://localhost:6379/15`) and clear the collections
+they use. Redis must be running. Do not point `TEST_REDIS_URL` at a production instance.
 
 ## WhatsApp templates
 
@@ -111,7 +108,7 @@ instead of being sent.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:4000` | API origin as seen from the browser, without `/api/v1`. It is inlined at **build time**, so rebuild the image after changing it. |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:5000` | API origin as seen from the browser, without `/api/v1`. It is inlined at **build time**, so rebuild the image after changing it. |
 
 The API's `CORS_ORIGINS` must include the web origin.
 
@@ -119,7 +116,7 @@ The API's `CORS_ORIGINS` must include the web origin.
 
 | Name | Default | Description |
 | --- | --- | --- |
-| `API_URL` | `http://localhost:4000` | API origin. Use `http://10.0.2.2:4000` on the Android emulator. |
+| `API_URL` | `http://localhost:5000` | API origin. Use `http://10.0.2.2:5000` on the Android emulator. |
 | `WEB_URL` | `http://localhost:3000` | Web origin. Payments, receipts and the full host console open here. |
 
 Release Android builds block cleartext HTTP, so production URLs must use HTTPS.

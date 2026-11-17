@@ -1,7 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import type { Invitation, Wedding, WeddingMember } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import type { AuthUser } from '../common/auth.js';
+import { InvitationModel, WeddingMemberModel, WeddingModel, type InvitationDoc, type WeddingDoc, type WeddingMemberDoc } from '../models/schemas.js';
 
 export type WeddingRole = 'HOST' | 'CO_HOST' | 'LEAD' | 'VENUE' | 'GUEST' | 'PLATFORM';
 
@@ -10,10 +9,10 @@ export const STAFF_ROLES: WeddingRole[] = ['HOST', 'CO_HOST', 'LEAD', 'VENUE'];
 
 export interface WeddingAccess {
   user: AuthUser;
-  wedding: Wedding;
+  wedding: WeddingDoc;
   role: WeddingRole;
-  member: WeddingMember | null;
-  invitation: Invitation | null;
+  member: WeddingMemberDoc | null;
+  invitation: InvitationDoc | null;
 }
 
 /**
@@ -23,16 +22,14 @@ export interface WeddingAccess {
  */
 @Injectable()
 export class WeddingAccessService {
-  constructor(private readonly prisma: PrismaService) {}
-
   async resolve(user: AuthUser | undefined, slug: string): Promise<WeddingAccess> {
     if (!user) throw new UnauthorizedException('Authentication required');
-    const wedding = await this.prisma.wedding.findUnique({ where: { slug } });
+    const wedding = await WeddingModel.findOne({ slug });
     if (!wedding) throw new NotFoundException('Wedding not found');
 
     const [member, invitation] = await Promise.all([
-      this.prisma.weddingMember.findUnique({ where: { weddingId_userId: { weddingId: wedding.id, userId: user.id } } }),
-      this.prisma.invitation.findUnique({ where: { weddingId_phone: { weddingId: wedding.id, phone: user.phone } } }),
+      WeddingMemberModel.findOne({ weddingId: wedding._id, userId: user.id }),
+      InvitationModel.findOne({ weddingId: wedding._id, phone: user.phone }),
     ]);
 
     let role: WeddingRole;

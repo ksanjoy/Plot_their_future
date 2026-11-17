@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Res } from
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { ADMIN_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import { CeremoniesService } from './ceremonies.service.js';
@@ -48,7 +49,7 @@ export class CeremoniesController {
   async update(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Body({ schema: updateSchema }) body: z.infer<typeof updateSchema>,
   ) {
     return this.ceremonies.update(await this.access.require(user, slug, ADMIN_ROLES), id, body);
@@ -56,7 +57,7 @@ export class CeremoniesController {
 
   @Delete(':id')
   @HttpCode(204)
-  async remove(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: z.uuid() }) id: string) {
+  async remove(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: objectId }) id: string) {
     await this.ceremonies.remove(await this.access.require(user, slug, ADMIN_ROLES), id);
   }
 
@@ -64,7 +65,7 @@ export class CeremoniesController {
   async ics(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Res() res: Response,
   ) {
     const { filename, body } = await this.ceremonies.ics(await this.access.resolve(user, slug), id);

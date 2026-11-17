@@ -1,6 +1,6 @@
 # API reference
 
-- **Base URL:** `{API_PUBLIC_URL}/api/v1`, for example `http://localhost:4000/api/v1`.
+- **Base URL:** `{API_PUBLIC_URL}/api/v1`, for example `http://localhost:5000/api/v1`.
 - **Interactive docs:** OpenAPI 3 at `/api/docs`, with the JSON spec at `/api/docs-json`. These list every field of every request body.
 
 Request bodies, query strings and route parameters are validated with Zod. Monetary amounts are

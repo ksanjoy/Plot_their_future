@@ -8,7 +8,7 @@ celebrates gifts and blessings at the venue.
 
 | Folder | Stack | What it is |
 | --- | --- | --- |
-| [`backend/`](backend) | NestJS 12, Prisma 7 + PostgreSQL, Redis + BullMQ, Socket.IO, Zod | REST API, auth, business logic, workers, realtime |
+| [`backend/`](backend) | NestJS 12, Mongoose + MongoDB, Redis + BullMQ, Socket.IO, Zod | REST API, auth, business logic, workers, realtime |
 | [`frontend/web/`](frontend/web) | Next.js 16 (App Router), React 19, Tailwind CSS 4, TanStack Query | Guest microsite, checkout, receipts, host console, compliance desk, stage screen |
 | [`frontend/mobile/`](frontend/mobile) | Flutter 3, Riverpod 3, dio, socket_io_client | Guest and host companion app (Android, iOS, web) |
 | [`docs/`](docs) | — | Architecture, API reference, environment variables, deployment, original specifications |
@@ -26,7 +26,7 @@ celebrates gifts and blessings at the venue.
 - **Ceremonies**: itinerary, maps, live streams, `.ics` calendar files, and automatic WhatsApp reminders two hours before each ceremony.
 - **RSVP**: party size within the invitation limit, ceremony selection, dietary needs, travel, stay and shuttle details, a WhatsApp confirmation, a host summary and CSV export.
 - **Square-foot registry**:
-  - Rooms are made of tiles. Guests reserve tiles atomically, using a Redis lock plus `FOR UPDATE SKIP LOCKED` rows, with a configurable cart hold.
+  - Rooms are made of tiles. Guests reserve tiles atomically, using a Redis lock plus a conditional update inside a MongoDB transaction, with a configurable cart hold.
   - Payment is through Razorpay (UPI, cards, netbanking) with signature verification and webhooks, or a built-in mock provider for development.
   - Expired holds are released automatically, and late payments are flagged for refund.
 - **Receipts**: an HMAC-signed receipt number, a PDF certificate, a public verification page, and delivery over WhatsApp.
@@ -47,24 +47,39 @@ docker compose --profile tools run --rm seed   # optional demo data
 ```
 
 - Web: <http://localhost:3000>
-- API: <http://localhost:4000/api/v1>
-- API docs (Swagger): <http://localhost:4000/api/docs>
+- API: <http://localhost:5000/api/v1>
+- API docs (Swagger): <http://localhost:5000/api/docs>
+
+## MongoDB Atlas
+
+The API connects with `MONGODB_URI`. Transactions (gift checkout, settlements, guest import) need a replica set. Atlas clusters are replica sets.
+
+1. Create a cluster and a database user with read/write access to one database.
+2. Under Network Access, allow the IP of the machine that runs the API.
+3. In Atlas, choose Connect → Drivers and copy the `mongodb+srv://` connection string.
+4. Copy `backend/.env.example` to `backend/.env` (that file is gitignored). Set:
+   - `MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-url>/<database-name>`
+   - `JWT_SECRET` to any non-empty value. Access tokens are signed with `JWT_ACCESS_SECRET`, and links with `JWT_LINK_SECRET`. Both of those, plus `OTP_PEPPER` and `RECEIPT_SIGNING_SECRET`, must be at least 32 characters (`openssl rand -hex 32`).
+5. Do not commit `.env` or put a real password in `.env.example`.
+
+Existing PostgreSQL data is not copied. Pointing `MONGODB_URI` at an empty database starts a new one. Mongoose creates indexes on connect.
+
+Docker Compose can run a single-node replica set instead of Atlas. The set advertises the hostname `mongo`, which resolves only on the Compose network, so the API container uses it. A process on the host (`pnpm start:dev`) should use Atlas.
 
 ## Quick start (local development)
 
-Prerequisites: Node.js 22+, pnpm 10, PostgreSQL 16+, Redis 7+, and Flutter 3.50+ for the mobile app.
+Prerequisites: Node.js 22+, pnpm 10, a MongoDB replica set (Atlas, or the Compose `mongo` service for the containerised API), Redis 7+, and Flutter 3.50+ for the mobile app.
 
 ```bash
-# 1. Infrastructure (or use your own Postgres/Redis)
-docker compose up -d postgres redis
+# 1. Redis (and Mongo, if you are not using Atlas)
+docker compose up -d redis
 
 # 2. API
 cd backend
-cp .env.example .env
+cp .env.example .env        # then set MONGODB_URI and the secrets
 pnpm install
-pnpm db:migrate
-pnpm db:seed            # demo wedding "sanvi-santosh"
-pnpm start:dev          # http://localhost:4000
+pnpm db:seed                # demo wedding "sanvi-santosh"
+pnpm start:dev              # http://localhost:5000
 
 # 3. Web
 cd ../frontend/web
@@ -75,7 +90,7 @@ pnpm dev                # http://localhost:3000
 # 4. Mobile (optional)
 cd ../mobile
 flutter pub get
-flutter run --dart-define=API_URL=http://10.0.2.2:4000 --dart-define=WEB_URL=http://10.0.2.2:3000
+flutter run --dart-define=API_URL=http://10.0.2.2:5000 --dart-define=WEB_URL=http://10.0.2.2:3000
 ```
 
 ### Demo accounts (after `pnpm db:seed`)
@@ -97,7 +112,7 @@ Open <http://localhost:3000/w/sanvi-santosh> as a guest, or <http://localhost:30
 ## Tests and checks
 
 ```bash
-cd backend && pnpm lint && pnpm test && pnpm test:e2e   # e2e needs Postgres + Redis (see docs/DEPLOYMENT.md)
+cd backend && pnpm lint && pnpm test && pnpm test:e2e   # e2e starts an in-memory MongoDB replica set and needs Redis (see docs/DEPLOYMENT.md)
 cd frontend/web && pnpm lint && pnpm build
 cd frontend/mobile && flutter analyze && flutter test
 ```

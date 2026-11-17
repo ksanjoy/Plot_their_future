@@ -7,7 +7,7 @@ Tailwind CSS 4 and TanStack Query, and talks to the API in [`../../backend`](../
 ## Setup
 
 ```bash
-cp .env.example .env.local     # NEXT_PUBLIC_API_URL=http://localhost:4000
+cp .env.example .env.local     # NEXT_PUBLIC_API_URL=http://localhost:5000
 pnpm install
 pnpm dev                       # http://localhost:3000
 ```

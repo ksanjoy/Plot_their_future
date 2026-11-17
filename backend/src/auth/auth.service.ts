@@ -4,9 +4,8 @@ import { InjectEnv, type Env } from '../config/config.module.js';
 import type { AccessTokenPayload, AuthUser } from '../common/auth.js';
 import { randomToken, sha256 } from '../common/utils/crypto.js';
 import { maskPhone, toE164 } from '../common/utils/phone.js';
-import type { User } from '../generated/prisma/client.js';
+import { InvitationModel, SessionModel, UserModel, WeddingMemberModel, WeddingModel, type UserDoc, type WeddingDoc } from '../models/schemas.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { OtpService } from './otp.service.js';
 
 export interface AccessibleWedding {
@@ -22,7 +21,6 @@ export interface AccessibleWedding {
 export class AuthService {
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly otp: OtpService,
     private readonly jwt: JwtService,
     private readonly notifications: NotificationsService,
@@ -38,11 +36,12 @@ export class AuthService {
     const phone = this.normalisePhone(input.phone);
 
     if (input.slug) {
-      const wedding = await this.prisma.wedding.findUnique({ where: { slug: input.slug }, select: { id: true } });
+      const wedding = await WeddingModel.findOne({ slug: input.slug }).select('_id');
       if (!wedding) throw new NotFoundException('Wedding not found');
+      const account = await UserModel.findOne({ phone }).select('_id');
       const [invitation, member] = await Promise.all([
-        this.prisma.invitation.findUnique({ where: { weddingId_phone: { weddingId: wedding.id, phone } }, select: { id: true } }),
-        this.prisma.weddingMember.findFirst({ where: { weddingId: wedding.id, user: { phone } }, select: { id: true } }),
+        InvitationModel.findOne({ weddingId: wedding._id, phone }).select('_id'),
+        account ? WeddingMemberModel.findOne({ weddingId: wedding._id, userId: account._id }).select('_id') : null,
       ]);
       if (!invitation && !member && !this.env.PLATFORM_ADMIN_PHONES.includes(phone)) {
         throw new ForbiddenException({
@@ -71,67 +70,92 @@ export class AuthService {
     await this.otp.verify(phone, input.otp);
 
     const isPlatformAdmin = this.env.PLATFORM_ADMIN_PHONES.includes(phone);
-    const existing = await this.prisma.user.findUnique({ where: { phone } });
-    const user = existing
-      ? await this.prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            ...(isPlatformAdmin && !existing.isPlatformAdmin ? { isPlatformAdmin: true } : {}),
-            ...(!existing.name && input.name ? { name: input.name } : {}),
-          },
-        })
-      : await this.prisma.user.create({ data: { phone, name: input.name, isPlatformAdmin } });
+    const existing = await UserModel.findOne({ phone });
+    let user: UserDoc;
+    if (existing) {
+      const patch: { isPlatformAdmin?: boolean; name?: string } = {};
+      if (isPlatformAdmin && !existing.isPlatformAdmin) patch.isPlatformAdmin = true;
+      if (!existing.name && input.name) patch.name = input.name;
+      user = Object.keys(patch).length
+        ? ((await UserModel.findByIdAndUpdate(existing._id, { $set: patch }, { new: true })) ?? existing)
+        : existing;
+    } else {
+      user = await UserModel.create({ phone, name: input.name ?? null, isPlatformAdmin });
+    }
 
-    await this.prisma.invitation.updateMany({ where: { phone, userId: null }, data: { userId: user.id } });
+    await InvitationModel.updateMany({ phone, userId: null }, { $set: { userId: user._id } });
     return this.issueTokens(user, userAgent);
   }
 
   async refresh(refreshToken: string, userAgent?: string) {
     const hash = sha256(refreshToken);
-    const session = await this.prisma.session.findUnique({ where: { refreshTokenHash: hash }, include: { user: true } });
+    const session = await SessionModel.findOne({ refreshTokenHash: hash }).populate<{ user: UserDoc }>('user');
     if (!session) throw new UnauthorizedException('Invalid refresh token');
+    const user = session.get('user') as UserDoc | undefined;
+    if (!user) throw new UnauthorizedException('Invalid refresh token');
     if (session.revokedAt) {
-      // A rotated token was replayed: assume theft and end every session of this user.
-      await this.prisma.session.updateMany({ where: { userId: session.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await SessionModel.updateMany({ userId: session.userId, revokedAt: null }, { $set: { revokedAt: new Date() } });
       throw new UnauthorizedException('Refresh token reuse detected. Please sign in again.');
     }
     if (session.expiresAt < new Date()) throw new UnauthorizedException('Session expired. Please sign in again.');
-    await this.prisma.session.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
-    return this.issueTokens(session.user, userAgent);
+    await SessionModel.updateOne({ _id: session._id }, { $set: { revokedAt: new Date() } });
+    return this.issueTokens(user, userAgent);
   }
 
   async logout(refreshToken: string) {
-    await this.prisma.session.updateMany({
-      where: { refreshTokenHash: sha256(refreshToken), revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await SessionModel.updateMany({ refreshTokenHash: sha256(refreshToken), revokedAt: null }, { $set: { revokedAt: new Date() } });
   }
 
   async me(authUser: AuthUser) {
-    const user = await this.prisma.user.findUnique({ where: { id: authUser.id } });
+    const user = await UserModel.findById(authUser.id);
     if (!user) throw new UnauthorizedException();
     return { user: this.publicUser(user), weddings: await this.accessibleWeddings(user) };
   }
 
   async updateProfile(authUser: AuthUser, data: { name?: string; email?: string | null }) {
-    const user = await this.prisma.user.update({ where: { id: authUser.id }, data });
+    const patch: { name?: string; email?: string | null } = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.email !== undefined) patch.email = data.email;
+    const user = await UserModel.findByIdAndUpdate(authUser.id, { $set: patch }, { new: true });
+    if (!user) throw new NotFoundException('Record not found');
     return this.publicUser(user);
   }
 
-  async accessibleWeddings(user: Pick<User, 'id' | 'phone'>): Promise<AccessibleWedding[]> {
-    const select = { slug: true, brideName: true, groomName: true, weddingDate: true, coverPhotoUrl: true } as const;
+  async accessibleWeddings(user: { id: string; phone: string }): Promise<AccessibleWedding[]> {
     const [memberships, invitations] = await Promise.all([
-      this.prisma.weddingMember.findMany({ where: { userId: user.id }, include: { wedding: { select } } }),
-      this.prisma.invitation.findMany({ where: { phone: user.phone }, include: { wedding: { select } } }),
+      WeddingMemberModel.find({ userId: user.id }).populate<{ wedding: WeddingDoc }>('wedding'),
+      InvitationModel.find({ phone: user.phone }).populate<{ wedding: WeddingDoc }>('wedding'),
     ]);
     const map = new Map<string, AccessibleWedding>();
-    for (const inv of invitations) map.set(inv.wedding.slug, { ...inv.wedding, role: 'GUEST' });
-    for (const m of memberships) map.set(m.wedding.slug, { ...m.wedding, role: m.role });
+    for (const inv of invitations) {
+      const wedding = inv.get('wedding') as WeddingDoc | undefined;
+      if (!wedding) continue;
+      map.set(wedding.slug, {
+        slug: wedding.slug,
+        brideName: wedding.brideName,
+        groomName: wedding.groomName,
+        weddingDate: wedding.weddingDate,
+        coverPhotoUrl: wedding.coverPhotoUrl,
+        role: 'GUEST',
+      });
+    }
+    for (const membership of memberships) {
+      const wedding = membership.get('wedding') as WeddingDoc | undefined;
+      if (!wedding) continue;
+      map.set(wedding.slug, {
+        slug: wedding.slug,
+        brideName: wedding.brideName,
+        groomName: wedding.groomName,
+        weddingDate: wedding.weddingDate,
+        coverPhotoUrl: wedding.coverPhotoUrl,
+        role: membership.role,
+      });
+    }
     return [...map.values()].sort((a, b) => (a.weddingDate?.getTime() ?? 0) - (b.weddingDate?.getTime() ?? 0));
   }
 
-  private async issueTokens(user: User, userAgent?: string) {
-    const weddings = await this.accessibleWeddings(user);
+  private async issueTokens(user: UserDoc, userAgent?: string) {
+    const weddings = await this.accessibleWeddings({ id: user.id, phone: user.phone });
     const payload: AccessTokenPayload = {
       sub: user.id,
       phone: user.phone,
@@ -143,13 +167,11 @@ export class AuthService {
       expiresIn: this.env.JWT_ACCESS_TTL_SEC,
     });
     const refreshToken = randomToken(48);
-    await this.prisma.session.create({
-      data: {
-        userId: user.id,
-        refreshTokenHash: sha256(refreshToken),
-        userAgent: userAgent?.slice(0, 255),
-        expiresAt: new Date(Date.now() + this.env.REFRESH_TOKEN_TTL_DAYS * 86_400_000),
-      },
+    await SessionModel.create({
+      userId: user._id,
+      refreshTokenHash: sha256(refreshToken),
+      userAgent: userAgent?.slice(0, 255) ?? null,
+      expiresAt: new Date(Date.now() + this.env.REFRESH_TOKEN_TTL_DAYS * 86_400_000),
     });
     return {
       accessToken,
@@ -160,7 +182,7 @@ export class AuthService {
     };
   }
 
-  private publicUser(user: User) {
+  private publicUser(user: UserDoc) {
     return { id: user.id, phone: user.phone, name: user.name, email: user.email, isPlatformAdmin: user.isPlatformAdmin };
   }
 }

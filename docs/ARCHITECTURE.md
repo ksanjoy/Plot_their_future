@@ -13,7 +13,7 @@
                └──┬─────────┬───┘   messages  │ MSG91     │
                   │         │                 └───────────┘
           ┌───────▼──┐  ┌───▼─────┐      ┌───────────────┐
-          │PostgreSQL│  │  Redis  │      │ Local disk/S3 │
+          │ MongoDB  │  │  Redis  │      │ Local disk/S3 │
           └──────────┘  └─────────┘      └───────────────┘
 ```
 
@@ -40,6 +40,8 @@ NestJS 12 as ESM, with one module per domain under `src/`:
 | `realtime` | Socket.IO gateway (`/live`), Redis adapter, and a Redis emitter for worker processes |
 | `storage` | Local disk or S3-compatible object storage |
 | `jobs` | BullMQ queue registration |
+| `database` | One Mongoose connection (`MONGODB_URI`), closed on shutdown |
+| `models` | Schemas, indexes, ObjectId references, and application-level cascades |
 | `health` | Liveness, database and Redis checks |
 
 Cross-cutting concerns:
@@ -49,9 +51,13 @@ Cross-cutting concerns:
 - A global exception filter that produces the `{ statusCode, code, message, errors }` envelope.
 - Throttling, Helmet, CORS from `CORS_ORIGINS`, and a raw body for webhook signatures.
 
-### Data model (Prisma, `prisma/schema.prisma`)
+### Data model (Mongoose, `backend/src/models/schemas.ts`)
 
-- **Users and sessions:** `User` (phone is unique, plus an `isPlatformAdmin` flag) and `Session` (hashed refresh token, family, rotation).
+Documents use an ObjectId `_id`. JSON responses expose it as `id` (24 hex characters). Relations are ObjectId references and are loaded with `populate` where the API used to join. Indexes are declared on the schemas and built when the process connects. Uniqueness that used to be a nullable SQL unique column (receipt number, provider order id) is a partial unique index, so several documents may omit the field.
+
+There are no foreign-key cascades. `src/models/cascades.ts` deletes or clears dependent documents when an invitation, ceremony, wedding, or user is removed. Replacing rooms is refused while contributions exist (the old restrict rule).
+
+- **Users and sessions:** `User` (phone is unique, plus an `isPlatformAdmin` flag) and `Session` (hashed refresh token, rotation, reuse detection).
 - **Weddings:**
   - `Wedding`: couple, property, rate per sq.ft. in paise, presets, cart hold TTL, escrow and RERA details, stage display mode.
   - `WeddingMember`: HOST, CO_HOST, LEAD (with a label) or VENUE.
@@ -61,7 +67,7 @@ Cross-cutting concerns:
   - `InvitationCeremony` and `Rsvp`.
 - **Registry:**
   - `RoomZone` (key, name, sq.ft.).
-  - `FloorTile`: one row per sq.ft., with status `OPEN`, `HOLD` (plus `lockedUntil`) or `SOLD`, linked to its contribution.
+  - `FloorTile`: one document per sq.ft., with status `OPEN`, `HOLD` (plus `lockedUntil`) or `FUNDED`, linked to its contribution.
   - `Contribution`: `PENDING`, then `SUCCESS`, `FAILED`, `EXPIRED`, `CANCELLED` or `REFUND_REQUIRED`. It also stores the receipt number, hash and signature.
 - **Money:** `LedgerEntry` (`CREDIT`, `DEBIT`, `REFUND`), `Settlement` (`REQUESTED` → `HOST_APPROVED` → `APPROVED` → `DISBURSED`, or `REJECTED`) and `PaymentEvent`.
 - **Other:** `Blessing`, `Dispatch` with `DispatchMessage`, and `NotificationLog`.
@@ -70,13 +76,13 @@ Cross-cutting concerns:
 
 1. **Lock.** The guest picks a room and a number of square feet, and `POST /registry/lock-tile` runs:
    - It takes a per-wedding Redis lock.
-   - It selects `OPEN` tiles, or held tiles whose hold has expired, with `FOR UPDATE SKIP LOCKED`.
+   - Inside a MongoDB transaction it selects `OPEN` tiles, or held tiles whose hold has expired, and claims them with a conditional `updateMany` (the same tiles cannot be claimed twice). MongoDB has no `FOR UPDATE SKIP LOCKED`.
    - It marks them `HOLD` until `now + cartHoldTtlSec`.
    - It creates a `PENDING` contribution, with an order from the provider.
    - Each user can have at most 3 open holds.
 2. **Pay.** The guest opens the signed `/pay/:id?t=` page, which uses Razorpay Checkout or the mock panel.
 3. **Confirm.** Either the checkout signature (`/verify`) or the webhook confirms the payment. `confirmPaid` is idempotent:
-   - Tiles become `SOLD`, the contribution becomes `SUCCESS`, and a `CREDIT` ledger entry is written.
+   - Tiles become `FUNDED`, the contribution becomes `SUCCESS`, and a `CREDIT` ledger entry is written.
    - The receipt number is signed.
    - The `receipts` job renders the PDF and sends it on WhatsApp.
    - Live events are emitted.

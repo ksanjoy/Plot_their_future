@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { ADMIN_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import { toCsv } from '../common/csv.js';
@@ -46,13 +47,13 @@ export class RegistryController {
   }
 
   @Get('registry/contributions/:id')
-  get(@CurrentUser() user: AuthUser, @Param('id', { schema: z.uuid() }) id: string) {
+  get(@CurrentUser() user: AuthUser, @Param('id', { schema: objectId }) id: string) {
     return this.registry.getContribution(user, id);
   }
 
   @Delete('registry/contributions/:id')
   @HttpCode(204)
-  async cancel(@CurrentUser() user: AuthUser, @Param('id', { schema: z.uuid() }) id: string) {
+  async cancel(@CurrentUser() user: AuthUser, @Param('id', { schema: objectId }) id: string) {
     await this.registry.cancel(user, id);
   }
 

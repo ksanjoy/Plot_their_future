@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { ADMIN_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import type { UploadedFileData } from '../common/upload.js';
@@ -29,13 +30,13 @@ const guestSchema = z.object({
   cohort: cohort.optional(),
   maxAttendees: z.number().int().min(1).max(10).optional(),
   enableRegistry: z.boolean().optional(),
-  ceremonyIds: z.array(z.uuid()).max(50).optional(),
+  ceremonyIds: z.array(objectId).max(50).optional(),
   refLead: z.string().trim().max(30).nullish(),
 });
 const querySchema = z.object({
   search: z.string().trim().max(80).optional(),
   cohort: cohort.optional(),
-  ceremonyId: z.uuid().optional(),
+  ceremonyId: objectId.optional(),
   rsvp: z.enum(['ATTENDING', 'DECLINED', 'MAYBE', 'PENDING']).optional(),
 });
 const MANAGERS = [...ADMIN_ROLES, 'LEAD' as const];
@@ -75,7 +76,7 @@ export class GuestsController {
   }
 
   @Get(':id')
-  async get(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: z.uuid() }) id: string) {
+  async get(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: objectId }) id: string) {
     return this.guests.get(await this.access.require(user, slug, MANAGERS), id);
   }
 
@@ -83,7 +84,7 @@ export class GuestsController {
   async update(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Body({ schema: guestSchema.partial() }) body: Partial<z.infer<typeof guestSchema>>,
   ) {
     return this.guests.update(await this.access.require(user, slug, MANAGERS), id, body);
@@ -91,7 +92,7 @@ export class GuestsController {
 
   @Delete(':id')
   @HttpCode(204)
-  async remove(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: z.uuid() }) id: string) {
+  async remove(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: objectId }) id: string) {
     await this.guests.remove(await this.access.require(user, slug, MANAGERS), id);
   }
 }

@@ -1,4 +1,3 @@
-import type { Ceremony, Wedding } from '../generated/prisma/client.js';
 import { toIcs } from './ceremonies.service.js';
 
 describe('toIcs', () => {
@@ -13,8 +12,8 @@ describe('toIcs', () => {
     venueMapsUrl: 'https://maps.google.com/?q=x',
     streamUrl: null,
     dressCode: 'Festive',
-  } as unknown as Ceremony;
-  const wedding = { brideName: 'Sanvi', groomName: 'Santosh' } as Wedding;
+  };
+  const wedding = { brideName: 'Sanvi', groomName: 'Santosh' };
 
   it('produces a valid VEVENT with escaped text and a 2-hour alarm', () => {
     const ics = toIcs(ceremony, wedding);

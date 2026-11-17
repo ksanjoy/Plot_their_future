@@ -1,14 +1,15 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { ADMIN_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import { DispatchService } from './dispatch.service.js';
 
 const dispatchSchema = z.object({
-  ceremonyIds: z.array(z.uuid()).max(50).optional(),
+  ceremonyIds: z.array(objectId).max(50).optional(),
   cohorts: z.array(z.enum(['CLOSE_FAMILY', 'FAMILY', 'FRIENDS', 'COLLEAGUES', 'VIP', 'OTHER'])).max(6).optional(),
-  invitationIds: z.array(z.uuid()).max(5000).optional(),
+  invitationIds: z.array(objectId).max(5000).optional(),
   includeRegistry: z.boolean().default(true),
   onlyPendingRsvp: z.boolean().optional(),
 });
@@ -40,7 +41,7 @@ export class DispatchController {
   }
 
   @Get(':id')
-  async detail(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: z.uuid() }) id: string) {
+  async detail(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Param('id', { schema: objectId }) id: string) {
     return this.dispatch.detail(await this.access.require(user, slug, SENDERS), id);
   }
 }

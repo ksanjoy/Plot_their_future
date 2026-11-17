@@ -25,14 +25,14 @@ Both values are compile-time `--dart-define`s:
 
 | Name | Default | Purpose |
 | --- | --- | --- |
-| `API_URL` | `http://localhost:4000` | API origin (without `/api/v1`). Use `http://10.0.2.2:4000` on the Android emulator. |
+| `API_URL` | `http://localhost:5000` | API origin (without `/api/v1`). Use `http://10.0.2.2:5000` on the Android emulator. |
 | `WEB_URL` | `http://localhost:3000` | Web app origin, used for the "Full console" link. |
 
 ## Run
 
 ```bash
 flutter pub get
-flutter run --dart-define=API_URL=http://10.0.2.2:4000 --dart-define=WEB_URL=http://10.0.2.2:3000
+flutter run --dart-define=API_URL=http://10.0.2.2:5000 --dart-define=WEB_URL=http://10.0.2.2:3000
 ```
 
 For Flutter web, the web origin (for example `http://localhost:8080`) must be listed in the API's

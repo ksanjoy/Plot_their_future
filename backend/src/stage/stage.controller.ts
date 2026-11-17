@@ -7,7 +7,7 @@ import { STAFF_ROLES, WeddingAccessService } from '../access/wedding-access.serv
 import { CurrentUser, Public, type AuthUser } from '../common/auth.js';
 import { InjectEnv, type Env } from '../config/config.module.js';
 import { BlessingsService } from '../blessings/blessings.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { WeddingModel } from '../models/schemas.js';
 import { RegistryService } from '../registry/registry.service.js';
 
 const qrQuery = z.object({
@@ -23,7 +23,6 @@ export class StageController {
     private readonly access: WeddingAccessService,
     private readonly registry: RegistryService,
     private readonly blessings: BlessingsService,
-    private readonly prisma: PrismaService,
   ) {}
 
   private giftUrl(slug: string, table?: string) {
@@ -65,7 +64,7 @@ export class StageController {
   @Public()
   @Get('qr.png')
   async qr(@Param('slug') slug: string, @Query({ schema: qrQuery }) q: z.infer<typeof qrQuery>, @Res() res: Response) {
-    const exists = await this.prisma.wedding.findUnique({ where: { slug }, select: { id: true } });
+    const exists = await WeddingModel.exists({ slug });
     if (!exists) throw new NotFoundException('Wedding not found');
     const png = await QRCode.toBuffer(this.giftUrl(slug, q.table), {
       type: 'png',

@@ -1,16 +1,15 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { LinkTokenService } from '../auth/link-token.service.js';
 import { hmacSha256, safeEqual, sha256 } from '../common/utils/crypto.js';
 import { initialsOf } from '../common/utils/format.js';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import type { Contribution, RoomZone, Wedding } from '../generated/prisma/client.js';
+import { ContributionModel, type ContributionDoc, type RoomZoneDoc, type WeddingDoc } from '../models/schemas.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { PrismaService } from '../prisma/prisma.service.js';
 import { canonicalReceipt } from './canonical.js';
 
-type FullContribution = Contribution & { room: RoomZone; wedding: Wedding };
+type FullContribution = ContributionDoc & { room: RoomZoneDoc; wedding: WeddingDoc };
 
 const inr = (paise: number) => `INR ${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(paise / 100)}`;
 const MAROON = '#8B1E2D';
@@ -19,11 +18,8 @@ const MUTED = '#64748B';
 
 @Injectable()
 export class ReceiptsService {
-  private readonly logger = new Logger(ReceiptsService.name);
-
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly links: LinkTokenService,
   ) {}
@@ -33,9 +29,12 @@ export class ReceiptsService {
   }
 
   private async load(id: string): Promise<FullContribution> {
-    const c = await this.prisma.contribution.findUnique({ where: { id }, include: { room: true, wedding: true } });
+    const c = await ContributionModel.findById(id).populate<{ room: RoomZoneDoc }>('room').populate<{ wedding: WeddingDoc }>('wedding');
     if (!c || c.status !== 'SUCCESS' || !c.receiptNumber) throw new NotFoundException('Receipt not found');
-    return c;
+    const room = c.get('room') as RoomZoneDoc | undefined;
+    const wedding = c.get('wedding') as WeddingDoc | undefined;
+    if (!room || !wedding) throw new NotFoundException('Receipt not found');
+    return Object.assign(c, { room, wedding });
   }
 
   /** Seals the receipt (hash + HMAC signature) and delivers it on WhatsApp. Idempotent. */
@@ -43,11 +42,11 @@ export class ReceiptsService {
     let c = await this.load(contributionId);
     if (!c.receiptHash) {
       const hash = sha256(this.canonical(c));
-      c = await this.prisma.contribution.update({
-        where: { id: c.id },
-        data: { receiptHash: hash, receiptSignature: hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash) },
-        include: { room: true, wedding: true },
-      });
+      await ContributionModel.updateOne(
+        { _id: c._id },
+        { $set: { receiptHash: hash, receiptSignature: hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash) } },
+      );
+      c = await this.load(contributionId);
     }
     if (c.donorPhone) {
       const pdfUrl = `${this.env.API_PUBLIC_URL.replace(/\/$/, '')}/api/v1/receipts/${c.id}/pdf?t=${this.links.sign(c.id, 'receipt', 30 * 86_400)}`;
@@ -65,22 +64,24 @@ export class ReceiptsService {
   }
 
   async verify(receiptNumber: string) {
-    const c = await this.prisma.contribution.findUnique({ where: { receiptNumber }, include: { room: true, wedding: true } });
-    if (!c || c.status !== 'SUCCESS' || !c.receiptHash || !c.receiptSignature) return { valid: false, receiptNumber };
+    const found = await ContributionModel.findOne({ receiptNumber }).populate<{ room: RoomZoneDoc }>('room').populate<{ wedding: WeddingDoc }>('wedding');
+    if (!found || found.status !== 'SUCCESS' || !found.receiptHash || !found.receiptSignature) return { valid: false, receiptNumber };
+    const room = found.get('room') as RoomZoneDoc;
+    const wedding = found.get('wedding') as WeddingDoc;
+    const c = Object.assign(found, { room, wedding });
     const hash = sha256(this.canonical(c));
-    const valid =
-      safeEqual(hash, c.receiptHash) && safeEqual(hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash), c.receiptSignature);
+    const valid = safeEqual(hash, found.receiptHash) && safeEqual(hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash), found.receiptSignature);
     return {
       valid,
       receiptNumber,
       hash: c.receiptHash,
-      couple: `${c.wedding.brideName} & ${c.wedding.groomName}`,
+      couple: `${wedding.brideName} & ${wedding.groomName}`,
       donorInitials: initialsOf(c.donorName),
       units: c.units,
-      room: c.room.name,
+      room: room.name,
       amountPaise: c.amountPaise,
       paidAt: c.paidAt,
-      taxExempt: c.wedding.taxExemptionEnabled,
+      taxExempt: wedding.taxExemptionEnabled,
     };
   }
 
@@ -199,9 +200,9 @@ export class ReceiptsService {
   private async issueHashOnly(id: string) {
     const c = await this.load(id);
     const hash = sha256(this.canonical(c));
-    await this.prisma.contribution.update({
-      where: { id },
-      data: { receiptHash: hash, receiptSignature: hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash) },
-    });
+    await ContributionModel.updateOne(
+      { _id: id },
+      { $set: { receiptHash: hash, receiptSignature: hmacSha256(this.env.RECEIPT_SIGNING_SECRET, hash) } },
+    );
   }
 }

@@ -1,7 +1,7 @@
 import { BadRequestException, GoneException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import { Prisma } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { isDuplicateKey } from '../database/helpers.js';
+import { ContributionModel, PaymentEventModel, type RoomZoneDoc, type WeddingDoc } from '../models/schemas.js';
 import { RegistryService } from '../registry/registry.service.js';
 import { PAYMENT_PROVIDER, type PaymentProvider } from './providers/payment-provider.js';
 
@@ -11,32 +11,30 @@ export class PaymentsService {
 
   constructor(
     @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
     private readonly registry: RegistryService,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
   async checkout(contributionId: string) {
-    const c = await this.prisma.contribution.findUnique({
-      where: { id: contributionId },
-      include: { room: true, wedding: true },
-    });
+    const c = await ContributionModel.findById(contributionId).populate<{ room: RoomZoneDoc }>('room').populate<{ wedding: WeddingDoc }>('wedding');
     if (!c) throw new NotFoundException('Gift not found');
+    const room = c.get('room') as RoomZoneDoc;
+    const wedding = c.get('wedding') as WeddingDoc;
     const base = {
       contributionId: c.id,
       status: c.status,
       units: c.units,
       amountPaise: c.amountPaise,
       ratePaise: c.ratePaise,
-      room: { key: c.room.key, name: c.room.name },
+      room: { key: room.key, name: room.name },
       donorName: c.donorName,
       blessing: c.blessing,
       holdExpiresAt: c.holdExpiresAt,
-      wedding: { slug: c.wedding.slug, brideName: c.wedding.brideName, groomName: c.wedding.groomName },
+      wedding: { slug: wedding.slug, brideName: wedding.brideName, groomName: wedding.groomName },
       links: this.registry.linksFor(c),
     };
     if (c.status === 'EXPIRED' || (c.status === 'PENDING' && c.holdExpiresAt.getTime() < Date.now())) {
-      const minutes = Math.round(c.wedding.cartHoldTtlSec / 60);
+      const minutes = Math.round(wedding.cartHoldTtlSec / 60);
       throw new GoneException({
         code: 'HOLD_EXPIRED',
         message: `Your ${minutes}-minute reservation expired. Please pick your square feet again.`,
@@ -51,7 +49,7 @@ export class PaymentsService {
         contributionId: c.id,
         orderId: c.providerOrderId,
         amountPaise: c.amountPaise,
-        description: `${c.units} sq.ft. in ${c.room.name} • ${c.wedding.brideName} & ${c.wedding.groomName}`,
+        description: `${c.units} sq.ft. in ${room.name} • ${wedding.brideName} & ${wedding.groomName}`,
         donorName: c.donorName,
         donorPhone: c.donorPhone,
       }),
@@ -59,7 +57,7 @@ export class PaymentsService {
   }
 
   async verifyCheckout(contributionId: string, input: { orderId: string; paymentId: string; signature: string }) {
-    const c = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
+    const c = await ContributionModel.findById(contributionId);
     if (!c || c.providerOrderId !== input.orderId) throw new BadRequestException('Order does not match this gift');
     if (!this.provider.verifyCheckout(input)) throw new BadRequestException('Payment signature verification failed');
     const { contribution } = await this.registry.confirmPaid(c.id, input.paymentId);
@@ -70,14 +68,15 @@ export class PaymentsService {
     if (this.provider.name !== 'mock' || this.env.NODE_ENV === 'production') {
       throw new NotFoundException();
     }
-    const c = await this.prisma.contribution.findUnique({ where: { id: contributionId } });
+    const c = await ContributionModel.findById(contributionId);
     if (!c) throw new NotFoundException('Gift not found');
     if (c.status !== 'PENDING' && c.status !== 'SUCCESS') {
       throw new GoneException({ code: 'HOLD_EXPIRED', message: 'This reservation is no longer active' });
     }
     if (outcome === 'failure') {
       await this.registry.markFailed(c.id, 'Payment declined (simulated)');
-      const failed = await this.prisma.contribution.findUniqueOrThrow({ where: { id: c.id } });
+      const failed = await ContributionModel.findById(c.id);
+      if (!failed) throw new NotFoundException('Gift not found');
       return { status: failed.status, links: this.registry.linksFor(failed) };
     }
     const { contribution } = await this.registry.confirmPaid(c.id, `mock_pay_${Date.now()}`);
@@ -89,21 +88,19 @@ export class PaymentsService {
     const event = this.provider.parseWebhook(rawBody, headers);
 
     try {
-      await this.prisma.paymentEvent.create({
-        data: {
-          provider: this.provider.name,
-          eventId: event.eventId,
-          type: event.type,
-          payload: event.payload as Prisma.InputJsonValue,
-        },
+      await PaymentEventModel.create({
+        provider: this.provider.name,
+        eventId: event.eventId,
+        type: event.type,
+        payload: event.payload as Record<string, unknown>,
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return { received: true, duplicate: true };
+      if (isDuplicateKey(err)) return { received: true, duplicate: true };
       throw err;
     }
 
     if (event.outcome === 'ignored' || !event.orderId) return { received: true };
-    const c = await this.prisma.contribution.findUnique({ where: { providerOrderId: event.orderId } });
+    const c = await ContributionModel.findOne({ providerOrderId: event.orderId });
     if (!c) {
       this.logger.warn(`Webhook ${event.type} for unknown order ${event.orderId}`);
       return { received: true };

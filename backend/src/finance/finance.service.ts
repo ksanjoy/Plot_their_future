@@ -1,10 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { ClientSession } from 'mongoose';
 import type { WeddingAccess } from '../access/wedding-access.service.js';
 import type { AuthUser } from '../common/auth.js';
 import { hmacSha256 } from '../common/utils/crypto.js';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import type { Settlement, SettlementDestination, SettlementStatus } from '../generated/prisma/client.js';
-import { PrismaService, type Tx } from '../prisma/prisma.service.js';
+import { idString, oid, withTransaction } from '../database/helpers.js';
+import { LedgerEntryModel, SettlementModel, WeddingModel, type SettlementDoc, type WeddingDoc } from '../models/schemas.js';
+import type { SettlementDestination, SettlementStatus } from '../models/types.js';
 
 export interface SettlementInput {
   amountPaise: number;
@@ -26,73 +28,113 @@ const maskAccount = (acc: string) => (acc.length <= 4 ? acc : `${'•'.repeat(Ma
  */
 @Injectable()
 export class FinanceService {
-  constructor(
-    @InjectEnv() private readonly env: Env,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(@InjectEnv() private readonly env: Env) {}
 
-  private sign(s: Settlement, stage: string, userId: string, at: Date) {
+  private sign(s: SettlementDoc, stage: string, userId: string, at: Date) {
     return hmacSha256(
       this.env.RECEIPT_SIGNING_SECRET,
-      [s.id, s.weddingId, s.amountPaise, s.destination, s.accountNumber, s.ifsc, stage, userId, at.toISOString()].join('|'),
+      [s.id, idString(s.weddingId), s.amountPaise, s.destination, s.accountNumber, s.ifsc, stage, userId, at.toISOString()].join('|'),
     );
   }
 
-  view(s: Settlement, reveal = false) {
-    return { ...s, accountNumber: reveal ? s.accountNumber : maskAccount(s.accountNumber) };
+  view(s: SettlementDoc, reveal = false) {
+    return {
+      id: s.id,
+      weddingId: idString(s.weddingId),
+      amountPaise: s.amountPaise,
+      destination: s.destination,
+      beneficiaryName: s.beneficiaryName,
+      accountNumber: reveal ? s.accountNumber : maskAccount(s.accountNumber),
+      ifsc: s.ifsc,
+      status: s.status,
+      requestedById: idString(s.requestedById),
+      hostApprovedById: s.hostApprovedById ? idString(s.hostApprovedById) : null,
+      hostApprovedAt: s.hostApprovedAt,
+      hostSignature: s.hostSignature,
+      complianceApprovedById: s.complianceApprovedById ? idString(s.complianceApprovedById) : null,
+      complianceApprovedAt: s.complianceApprovedAt,
+      complianceSignature: s.complianceSignature,
+      rejectedReason: s.rejectedReason,
+      bankReference: s.bankReference,
+      disbursedAt: s.disbursedAt,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    };
   }
 
-  async balances(weddingId: string, tx: Tx = this.prisma) {
+  async balances(weddingId: string, session?: ClientSession) {
+    const match = { weddingId: oid(weddingId) };
     const [grouped, reserved] = await Promise.all([
-      tx.ledgerEntry.groupBy({ by: ['type'], where: { weddingId }, _sum: { amountPaise: true } }),
-      tx.settlement.aggregate({ where: { weddingId, status: { in: OPEN_STATUSES } }, _sum: { amountPaise: true } }),
+      LedgerEntryModel.aggregate<{ _id: string; amountPaise: number }>([
+        { $match: match },
+        { $group: { _id: '$type', amountPaise: { $sum: '$amountPaise' } } },
+      ]).session(session ?? null),
+      SettlementModel.aggregate<{ amountPaise: number }>([
+        { $match: { ...match, status: { $in: OPEN_STATUSES } } },
+        { $group: { _id: null, amountPaise: { $sum: '$amountPaise' } } },
+      ]).session(session ?? null),
     ]);
-    const sum = (t: string) => grouped.find((g) => g.type === t)?._sum.amountPaise ?? 0;
+    const sum = (t: string) => grouped.find((g) => g._id === t)?.amountPaise ?? 0;
     const credits = sum('CREDIT');
     const debits = sum('DEBIT');
     const refunds = sum('REFUND');
     const balancePaise = credits - debits - refunds;
-    const reservedPaise = reserved._sum.amountPaise ?? 0;
+    const reservedPaise = reserved[0]?.amountPaise ?? 0;
     return { creditsPaise: credits, debitsPaise: debits, refundsPaise: refunds, balancePaise, reservedPaise, availablePaise: balancePaise - reservedPaise };
   }
 
   async ledger(access: WeddingAccess) {
     const w = access.wedding;
     const [entries, balances, settlements] = await Promise.all([
-      this.prisma.ledgerEntry.findMany({
-        where: { weddingId: w.id },
-        orderBy: { createdAt: 'desc' },
-        take: 500,
-        include: { contribution: { select: { donorName: true, units: true, receiptNumber: true } } },
-      }),
+      LedgerEntryModel.find({ weddingId: w._id })
+        .sort({ createdAt: -1 })
+        .limit(500)
+        .populate<{ contribution: { donorName: string; units: number; receiptNumber: string | null } | null }>('contribution', 'donorName units receiptNumber'),
       this.balances(w.id),
-      this.prisma.settlement.findMany({ where: { weddingId: w.id }, orderBy: { createdAt: 'desc' } }),
+      SettlementModel.find({ weddingId: w._id }).sort({ createdAt: -1 }),
     ]);
     return {
       escrow: { bankName: w.escrowBankName, accountNumber: w.escrowAccountNumber, ifsc: w.escrowIfsc, reraRegId: w.reraRegId },
       balances,
-      entries,
+      entries: entries.map((entry) => {
+        const contribution = entry.get('contribution') as { donorName: string; units: number; receiptNumber: string | null } | null;
+        return {
+          id: entry.id,
+          weddingId: idString(entry.weddingId),
+          contributionId: entry.contributionId ? idString(entry.contributionId) : null,
+          settlementId: entry.settlementId ? idString(entry.settlementId) : null,
+          type: entry.type,
+          amountPaise: entry.amountPaise,
+          reference: entry.reference,
+          createdAt: entry.createdAt,
+          contribution: contribution
+            ? { donorName: contribution.donorName, units: contribution.units, receiptNumber: contribution.receiptNumber }
+            : null,
+        };
+      }),
       settlements: settlements.map((s) => this.view(s)),
     };
   }
 
   async request(access: WeddingAccess, input: SettlementInput) {
-    return this.prisma.$transaction(async (tx) => {
-      // Serialise settlement requests per wedding so two concurrent requests cannot both pass the balance check.
-      await tx.$queryRaw`SELECT id FROM "Wedding" WHERE id = ${access.wedding.id}::uuid FOR UPDATE`;
-      const { availablePaise } = await this.balances(access.wedding.id, tx);
+    return withTransaction(async (session) => {
+      // Touch the wedding so two concurrent requests conflict and the loser retries after the first commits.
+      await WeddingModel.updateOne({ _id: access.wedding._id }, { $currentDate: { updatedAt: true } }, { session });
+      const { availablePaise } = await this.balances(access.wedding.id, session);
       if (input.amountPaise > availablePaise) {
         throw new BadRequestException({ code: 'INSUFFICIENT_FUNDS', message: 'Amount exceeds the available escrow balance' });
       }
-      const s = await tx.settlement.create({
-        data: { ...input, ifsc: input.ifsc.toUpperCase(), weddingId: access.wedding.id, requestedById: access.user.id },
-      });
+      const [s] = await SettlementModel.create(
+        [{ ...input, ifsc: input.ifsc.toUpperCase(), weddingId: access.wedding._id, requestedById: access.user.id }],
+        { session },
+      );
+      if (!s) throw new Error('Failed to create settlement');
       return this.view(s);
     });
   }
 
   private async find(id: string, weddingId?: string) {
-    const s = await this.prisma.settlement.findFirst({ where: { id, ...(weddingId ? { weddingId } : {}) } });
+    const s = await SettlementModel.findOne({ _id: id, ...(weddingId ? { weddingId } : {}) });
     if (!s) throw new NotFoundException('Settlement not found');
     return s;
   }
@@ -101,22 +143,34 @@ export class FinanceService {
     const s = await this.find(id, access.wedding.id);
     if (s.status !== 'REQUESTED') throw new ConflictException({ code: 'INVALID_STATE', message: `Settlement is ${s.status}` });
     const at = new Date();
-    const updated = await this.prisma.settlement.update({
-      where: { id, status: 'REQUESTED' },
-      data: { status: 'HOST_APPROVED', hostApprovedById: access.user.id, hostApprovedAt: at, hostSignature: this.sign(s, 'HOST', access.user.id, at) },
-    });
+    const updated = await SettlementModel.findOneAndUpdate(
+      { _id: id, status: 'REQUESTED' },
+      { $set: { status: 'HOST_APPROVED', hostApprovedById: access.user.id, hostApprovedAt: at, hostSignature: this.sign(s, 'HOST', access.user.id, at) } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('Record not found');
     return this.view(updated);
   }
 
   async listForCompliance(user: AuthUser, status?: SettlementStatus) {
     this.requirePlatform(user);
-    const rows = await this.prisma.settlement.findMany({
-      where: status ? { status } : {},
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-      include: { wedding: { select: { slug: true, brideName: true, groomName: true, escrowBankName: true, escrowAccountNumber: true } } },
+    const rows = await SettlementModel.find(status ? { status } : {})
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .populate<{ wedding: Pick<WeddingDoc, 'slug' | 'brideName' | 'groomName' | 'escrowBankName' | 'escrowAccountNumber'> }>('wedding', 'slug brideName groomName escrowBankName escrowAccountNumber');
+    return rows.map((s) => {
+      const wedding = s.get('wedding') as WeddingDoc;
+      return {
+        ...this.view(s, true),
+        wedding: {
+          slug: wedding.slug,
+          brideName: wedding.brideName,
+          groomName: wedding.groomName,
+          escrowBankName: wedding.escrowBankName,
+          escrowAccountNumber: wedding.escrowAccountNumber,
+        },
+      };
     });
-    return rows.map(({ wedding, ...s }) => ({ ...this.view(s, true), wedding }));
   }
 
   private requirePlatform(user: AuthUser) {
@@ -127,30 +181,42 @@ export class FinanceService {
     this.requirePlatform(user);
     const s = await this.find(id);
     if (s.status !== 'HOST_APPROVED') throw new ConflictException({ code: 'INVALID_STATE', message: `Settlement is ${s.status}` });
-    if (s.hostApprovedById === user.id || s.requestedById === user.id) {
+    if (idString(s.hostApprovedById) === user.id || idString(s.requestedById) === user.id) {
       throw new ForbiddenException({ code: 'DUAL_CONTROL', message: 'A different person must give compliance approval' });
     }
     const at = new Date();
-    const updated = await this.prisma.settlement.update({
-      where: { id, status: 'HOST_APPROVED' },
-      data: { status: 'APPROVED', complianceApprovedById: user.id, complianceApprovedAt: at, complianceSignature: this.sign(s, 'COMPLIANCE', user.id, at) },
-    });
+    const updated = await SettlementModel.findOneAndUpdate(
+      { _id: id, status: 'HOST_APPROVED' },
+      {
+        $set: {
+          status: 'APPROVED',
+          complianceApprovedById: user.id,
+          complianceApprovedAt: at,
+          complianceSignature: this.sign(s, 'COMPLIANCE', user.id, at),
+        },
+      },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('Record not found');
     return this.view(updated, true);
   }
 
   async disburse(user: AuthUser, id: string, bankReference: string) {
     this.requirePlatform(user);
-    return this.prisma.$transaction(async (tx) => {
-      const s = await tx.settlement.findUnique({ where: { id } });
+    return withTransaction(async (session) => {
+      const s = await SettlementModel.findById(id).session(session);
       if (!s) throw new NotFoundException('Settlement not found');
       if (s.status !== 'APPROVED') throw new ConflictException({ code: 'INVALID_STATE', message: `Settlement is ${s.status}` });
-      const updated = await tx.settlement.update({
-        where: { id, status: 'APPROVED' },
-        data: { status: 'DISBURSED', bankReference, disbursedAt: new Date() },
-      });
-      await tx.ledgerEntry.create({
-        data: { weddingId: s.weddingId, settlementId: s.id, type: 'DEBIT', amountPaise: s.amountPaise, reference: `SETTLEMENT ${bankReference}` },
-      });
+      const updated = await SettlementModel.findOneAndUpdate(
+        { _id: id, status: 'APPROVED' },
+        { $set: { status: 'DISBURSED', bankReference, disbursedAt: new Date() } },
+        { new: true, session },
+      );
+      if (!updated) throw new NotFoundException('Record not found');
+      await LedgerEntryModel.create(
+        [{ weddingId: s.weddingId, settlementId: s._id, type: 'DEBIT', amountPaise: s.amountPaise, reference: `SETTLEMENT ${bankReference}` }],
+        { session },
+      );
       return this.view(updated, true);
     });
   }
@@ -159,7 +225,12 @@ export class FinanceService {
     if (!access) this.requirePlatform(user);
     const s = await this.find(id, access?.wedding.id);
     if (!OPEN_STATUSES.includes(s.status)) throw new ConflictException({ code: 'INVALID_STATE', message: `Settlement is ${s.status}` });
-    const updated = await this.prisma.settlement.update({ where: { id, status: s.status }, data: { status: 'REJECTED', rejectedReason: reason } });
+    const updated = await SettlementModel.findOneAndUpdate(
+      { _id: id, status: s.status },
+      { $set: { status: 'REJECTED', rejectedReason: reason } },
+      { new: true },
+    );
+    if (!updated) throw new NotFoundException('Record not found');
     return this.view(updated, !access);
   }
 }

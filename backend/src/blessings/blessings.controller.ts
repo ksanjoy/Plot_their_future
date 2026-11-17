@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInte
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
+import { objectId } from '../common/id.js';
 import { STAFF_ROLES, WeddingAccessService } from '../access/wedding-access.service.js';
 import { CurrentUser, type AuthUser } from '../common/auth.js';
 import type { UploadedFileData } from '../common/upload.js';
@@ -51,7 +52,7 @@ export class BlessingsController {
   async moderate(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Body({ schema: moderateSchema }) body: z.infer<typeof moderateSchema>,
   ) {
     return this.blessings.moderate(await this.access.require(user, slug, MODERATORS), id, body.status);

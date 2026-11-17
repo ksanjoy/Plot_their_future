@@ -1,24 +1,29 @@
-# Local / single-host stack: PostgreSQL, Redis, API (with workers) and the web app.
+# Local / single-host stack: MongoDB (replica set), Redis, API (with workers) and the web app.
 #   cp backend/.env.example backend/.env
 #   docker compose up --build -d
 #   docker compose --profile tools run --rm seed      # optional demo data
-# See docs/DEPLOYMENT.md for production settings.
+# See docs/DEPLOYMENT.md for production settings (MongoDB Atlas).
 name: plot-their-future
 
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_USER: ptf
-      POSTGRES_PASSWORD: ptf
-      POSTGRES_DB: ptf
-    ports: ["5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports: ["27017:27017"]
+    volumes: [mongodata:/data/db]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ptf -d ptf"]
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "try { if (rs.status().ok) quit(0); } catch (e) {} rs.initiate({_id:'rs0', members:[{_id:0, host:'mongo:27017'}]}); quit(1)",
+        ]
       interval: 5s
-      timeout: 3s
-      retries: 20
+      timeout: 10s
+      retries: 30
+      start_period: 10s
     restart: unless-stopped
 
   redis:
@@ -40,13 +45,14 @@ services:
       # The image defaults to production, which refuses the mock payment provider.
       # Set NODE_ENV=production with real Razorpay/WhatsApp credentials when deploying.
       NODE_ENV: ${API_NODE_ENV:-development}
-      DATABASE_URL: postgresql://ptf:ptf@postgres:5432/ptf?schema=public
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/ptf?replicaSet=rs0
       REDIS_URL: redis://redis:6379
       STORAGE_LOCAL_DIR: /app/uploads
-    ports: ["4000:4000"]
+    ports: ["5000:5000"]
     volumes: [uploads:/app/uploads]
     depends_on:
-      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
       redis: { condition: service_healthy }
     restart: unless-stopped
 
@@ -55,7 +61,7 @@ services:
       context: ./frontend/web
       args:
         # Baked into the browser bundle: must be the API URL as seen from the browser.
-        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:5000}
     ports: ["3000:3000"]
     depends_on: [api]
     restart: unless-stopped
@@ -66,13 +72,13 @@ services:
     env_file: ./backend/.env
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://ptf:ptf@postgres:5432/ptf?schema=public
+      MONGODB_URI: mongodb://mongo:27017/ptf?replicaSet=rs0
       REDIS_URL: redis://redis:6379
-    command: ["sh", "-c", "pnpm db:migrate && pnpm db:seed"]
+    command: ["pnpm", "db:seed"]
     depends_on:
-      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
 
 volumes:
-  pgdata:
+  mongodata:
   redisdata:
   uploads:

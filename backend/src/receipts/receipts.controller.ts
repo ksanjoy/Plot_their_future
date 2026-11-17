@@ -5,7 +5,9 @@ import { z } from 'zod';
 import { ADMIN_ROLES } from '../access/wedding-access.service.js';
 import { LinkTokenService } from '../auth/link-token.service.js';
 import { CurrentUser, Public, type AuthUser } from '../common/auth.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { objectId } from '../common/id.js';
+import { sameId } from '../database/helpers.js';
+import { ContributionModel, WeddingMemberModel } from '../models/schemas.js';
 import { ReceiptsService } from './receipts.service.js';
 
 const tokenQuery = z.object({ t: z.string().optional() });
@@ -16,7 +18,6 @@ export class ReceiptsController {
   constructor(
     private readonly receipts: ReceiptsService,
     private readonly links: LinkTokenService,
-    private readonly prisma: PrismaService,
   ) {}
 
   @Public()
@@ -28,7 +29,7 @@ export class ReceiptsController {
   @Public()
   @Get(':id')
   async data(
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>,
     @CurrentUser() user?: AuthUser,
   ) {
@@ -39,7 +40,7 @@ export class ReceiptsController {
   @Public()
   @Get(':id/pdf')
   async pdf(
-    @Param('id', { schema: z.uuid() }) id: string,
+    @Param('id', { schema: objectId }) id: string,
     @Query({ schema: tokenQuery }) q: z.infer<typeof tokenQuery>,
     @Res() res: Response,
     @CurrentUser() user?: AuthUser,
@@ -56,12 +57,10 @@ export class ReceiptsController {
   private async authorise(id: string, token: string | undefined, user?: AuthUser) {
     if (token) return this.links.verify(token, id, 'receipt');
     if (!user) throw new NotFoundException('Receipt not found');
-    const c = await this.prisma.contribution.findUnique({ where: { id }, select: { userId: true, weddingId: true } });
+    const c = await ContributionModel.findById(id).select('userId weddingId');
     if (!c) throw new NotFoundException('Receipt not found');
-    if (c.userId === user.id) return;
-    const member = await this.prisma.weddingMember.findUnique({
-      where: { weddingId_userId: { weddingId: c.weddingId, userId: user.id } },
-    });
+    if (sameId(c.userId, user.id)) return;
+    const member = await WeddingMemberModel.findOne({ weddingId: c.weddingId, userId: user.id });
     if (!member || !ADMIN_ROLES.includes(member.role)) throw new NotFoundException('Receipt not found');
   }
 }
