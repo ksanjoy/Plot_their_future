@@ -51,7 +51,7 @@ function ProfileForm() {
         <h2 className="font-serif text-lg font-bold">Help and complaints</h2>
         <Field label="Subject"><input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} required /></Field>
         <Field label="Message"><textarea className="input min-h-24" value={message} onChange={(e) => setMessage(e.target.value)} required /></Field>
-        {complaint.isSuccess && <p className="text-sm text-emerald-800">Sent. The admin team can see it on the platform desk.</p>}
+        {complaint.isSuccess && <p className="text-sm text-maroon">Sent. The admin team can see it on the platform desk.</p>}
         <button className="btn-ghost">Send</button>
       </form>
       <button className="text-sm text-maroon underline" onClick={() => { if (confirm("Erase your name, occupation and password?")) erase.mutate(); }}>

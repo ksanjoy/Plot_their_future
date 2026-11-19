@@ -28,7 +28,7 @@ function WeddingList() {
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Host console</p>
+          <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">Host console</p>
           <h1 className="mt-1 font-display text-3xl font-bold text-maroon">Your celebrations</h1>
         </div>
         <div className="flex gap-2">

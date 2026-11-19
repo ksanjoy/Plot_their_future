@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     "Skip the boxed gifts, gift a square foot! Private wedding microsites with RSVPs, WhatsApp invitations and an escrow-backed home registry.",
 };
 
-export const viewport: Viewport = { themeColor: "#8B1E2D" };
+export const viewport: Viewport = { themeColor: "#731328" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

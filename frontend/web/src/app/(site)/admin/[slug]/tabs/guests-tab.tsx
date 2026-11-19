@@ -293,7 +293,7 @@ export function GuestsTab({ slug, role }: TabProps) {
                         <Pencil size={15} />
                       </button>
                       <button
-                        className="rounded-lg p-2 text-maroon hover:bg-rose-50"
+                        className="rounded-lg p-2 text-maroon hover:bg-gold"
                         title="Remove"
                         onClick={() => {
                           if (confirm(`Remove ${g.guestName} from the guest list?`)) remove.mutate(g.id);

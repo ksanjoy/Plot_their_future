@@ -43,7 +43,7 @@ function Form() {
         save.mutate();
       }}
     >
-      <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Couple</p>
+      <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">Couple</p>
       <h1 className="font-display text-3xl font-bold text-maroon">Register a marriage</h1>
       <p className="text-sm text-muted">This goes to the admin for approval. The flat stays available to others until it is approved.</p>
       <div className="grid gap-3 sm:grid-cols-2">

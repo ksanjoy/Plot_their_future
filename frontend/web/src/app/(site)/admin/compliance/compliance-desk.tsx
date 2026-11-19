@@ -63,7 +63,7 @@ function Desk() {
 
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
-      <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.25em] text-gold uppercase">
+      <p className="flex items-center gap-2 text-xs font-semibold tracking-[0.25em] text-maroon uppercase">
         <ShieldCheck size={14} /> Platform compliance
       </p>
       <h1 className="mt-1 font-display text-3xl font-bold text-maroon">Settlement approvals</h1>
@@ -109,7 +109,7 @@ function Desk() {
                     {s.hostApprovedAt && ` • host approved ${formatDateTime(s.hostApprovedAt)}`}
                   </p>
                   {s.rejectedReason && <p className="mt-1 text-xs text-maroon">Reason: {s.rejectedReason}</p>}
-                  {s.bankReference && <p className="mt-1 text-xs text-emerald-800">UTR {s.bankReference}</p>}
+                  {s.bankReference && <p className="mt-1 text-xs text-maroon">UTR {s.bankReference}</p>}
                 </div>
                 <Badge tone={SETTLEMENT_TONE[s.status]}>{SETTLEMENT_LABEL[s.status]}</Badge>
                 <div className="flex gap-2">

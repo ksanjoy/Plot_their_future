@@ -134,7 +134,7 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
       controller: widget.controller,
       padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
       children: [
-        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(4)))),
+        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.deepBurgundy.withValues(alpha: 0.26), borderRadius: BorderRadius.circular(4)))),
         const SizedBox(height: 12),
         Text('Gift square feet', style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.crimsonMaroon)),
         const SizedBox(height: 16),
@@ -143,11 +143,11 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final r in reg.rooms)
             ChoiceChip(
-              avatar: Icon(roomIcon(r.icon), size: 16, color: _roomKey == r.key ? Colors.white : AppTheme.crimsonMaroon),
+              avatar: Icon(roomIcon(r.icon), size: 16, color: _roomKey == r.key ? AppTheme.palePine : AppTheme.crimsonMaroon),
               label: Text('${r.name} • ${r.openSft} open'),
               selected: _roomKey == r.key,
               selectedColor: AppTheme.crimsonMaroon,
-              labelStyle: GoogleFonts.outfit(color: _roomKey == r.key ? Colors.white : AppTheme.textDark, fontSize: 12),
+              labelStyle: GoogleFonts.outfit(color: _roomKey == r.key ? AppTheme.palePine : AppTheme.textDark, fontSize: 12),
               onSelected: r.openSft > 0 ? (_) => setState(() => _roomKey = r.key) : null,
             ),
         ]),
@@ -228,8 +228,8 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('YOUR GIFT', style: GoogleFonts.outfit(fontSize: 11, letterSpacing: 2, color: AppTheme.lightGold)),
-                Text(Formatters.inr(_amountPaise), style: GoogleFonts.cinzel(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                Text('${_mode == 'AMOUNT' ? 'Custom amount' : _mode == 'BRICK' ? '$units bricks' : '$units sq.ft.'} • held ${(reg.summary.holdTtlSec / 60).round()} min while you pay', style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70)),
+                Text(Formatters.inr(_amountPaise), style: GoogleFonts.cinzel(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
+                Text('${_mode == 'AMOUNT' ? 'Custom amount' : _mode == 'BRICK' ? '$units bricks' : '$units sq.ft.'} • held ${(reg.summary.holdTtlSec / 60).round()} min while you pay', style: GoogleFonts.outfit(fontSize: 11, color: AppTheme.palePine)),
               ]),
             ),
             ElevatedButton(

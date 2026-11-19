@@ -23,7 +23,7 @@ export function IntroGate() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-maroon/80 p-4">
       <div className="card w-full max-w-lg p-6">
-        <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">PlotTheirFuture</p>
+        <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">PlotTheirFuture</p>
         <h2 className="mt-2 font-display text-2xl font-bold text-maroon">{current?.title ?? "The wedding gift that becomes their forever."}</h2>
         <p className="mt-3 text-sm text-muted">{current?.body ?? "Loved ones contribute toward a couple's first home."}</p>
         <div className="mt-6 flex items-center justify-between">

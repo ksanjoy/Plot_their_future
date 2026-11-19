@@ -14,12 +14,12 @@ const PILLARS = [
 export default function SecurityPage() {
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-12">
-      <p className="text-center text-xs font-semibold tracking-[0.25em] text-gold uppercase">RBI escrow protection • RERA builder settlement</p>
+      <p className="text-center text-xs font-semibold tracking-[0.25em] text-maroon uppercase">RBI escrow protection • RERA builder settlement</p>
       <h1 className="mt-3 text-center font-display text-3xl font-bold text-maroon">Security & frequently asked questions</h1>
       <div className="mt-8 grid grid-cols-2 gap-3 md:grid-cols-4">
         {PILLARS.map((p) => (
           <div key={p.title} className="card flex flex-col items-center gap-2 p-4 text-center">
-            <p.icon className="text-gold" />
+            <p.icon className="text-maroon" />
             <p className="text-sm font-semibold">{p.title}</p>
           </div>
         ))}

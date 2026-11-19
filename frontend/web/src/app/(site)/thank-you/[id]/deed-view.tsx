@@ -21,13 +21,13 @@ export function DeedView() {
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-12">
-      <p className="text-center font-display text-sm tracking-[0.3em] text-gold uppercase">Thank you</p>
+      <p className="text-center font-display text-sm tracking-[0.3em] text-maroon uppercase">Thank you</p>
       <h1 className="mt-2 text-center font-serif text-3xl font-bold text-maroon md:text-4xl">Your gift is now part of their home</h1>
 
       <article className="relative mt-8 overflow-hidden rounded-3xl border-4 border-double border-gold bg-white p-8 shadow-xl md:p-12">
         <div className="pointer-events-none absolute inset-3 rounded-2xl border border-gold/40" />
         <div className="relative text-center">
-          <Home className="mx-auto text-gold" size={36} />
+          <Home className="mx-auto text-maroon" size={36} />
           <p className="mt-3 font-display text-xs tracking-[0.35em] text-muted uppercase">Certificate of a home gift</p>
           <p className="mt-6 text-sm text-muted">This certifies that</p>
           <p className="mt-1 font-serif text-3xl font-bold text-ink italic">{r.donorName}</p>

@@ -23,7 +23,7 @@ export function SignedInHome() {
     <section className="mx-auto w-full max-w-6xl px-4 pt-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Welcome{user.name ? `, ${user.name.split(" ")[0]}` : ""}</p>
+          <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">Welcome{user.name ? `, ${user.name.split(" ")[0]}` : ""}</p>
           <h2 className="mt-1 font-display text-3xl font-bold text-maroon">Celebrate the wedding. Build the future.</h2>
         </div>
         <Link href="/register" className="btn-primary">

@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 export function Spinner({ label = "Loading…", className = "" }: { label?: string; className?: string }) {
   return (
     <div className={`flex items-center justify-center gap-2 py-10 text-sm text-muted ${className}`} role="status">
-      <Loader2 className="animate-spin text-gold" size={18} />
+      <Loader2 className="animate-spin text-maroon" size={18} />
       {label}
     </div>
   );
@@ -110,10 +110,10 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
 export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "success" | "warn" | "danger" | "gold" }) {
   const tones = {
     neutral: "bg-line/60 text-ink",
-    success: "bg-emerald-100 text-emerald-800",
-    warn: "bg-amber-100 text-amber-800",
-    danger: "bg-rose-100 text-rose-800",
-    gold: "bg-gold/15 text-[#7a5d10]",
+    success: "bg-gold text-maroon",
+    warn: "bg-gold text-maroon",
+    danger: "bg-maroon text-ivory",
+    gold: "bg-gold text-maroon",
   };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
 }

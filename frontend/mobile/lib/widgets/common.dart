@@ -53,7 +53,7 @@ class ErrorPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.cloud_off, color: AppTheme.royalGold, size: 40),
+          const Icon(Icons.cloud_off, color: AppTheme.crimsonMaroon, size: 40),
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: AppTheme.textMuted)),
           if (onRetry != null) ...[
@@ -87,7 +87,7 @@ class GoldProgressBar extends StatelessWidget {
   final double height;
   final Color track;
 
-  const GoldProgressBar({super.key, required this.value, this.height = 10, this.track = const Color(0xFFEADFCB)});
+  const GoldProgressBar({super.key, required this.value, this.height = 10, this.track = AppTheme.deepBurgundy});
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +118,7 @@ IconData roomIcon(String? icon) => switch (icon) {
 
 ButtonStyle primaryButton({bool gold = false}) => ElevatedButton.styleFrom(
       backgroundColor: gold ? AppTheme.royalGold : AppTheme.crimsonMaroon,
-      foregroundColor: gold ? AppTheme.textDark : Colors.white,
+      foregroundColor: gold ? AppTheme.deepBurgundy : AppTheme.palePine,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
       textStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),

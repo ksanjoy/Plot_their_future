@@ -105,7 +105,7 @@ class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
           : Stack(children: [
               Container(decoration: const BoxDecoration(gradient: AppTheme.maroonGradient)),
               SafeArea(child: _content(data)),
-              Positioned(top: 8, left: 8, child: SafeArea(child: IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.of(context).pop()))),
+              Positioned(top: 8, left: 8, child: SafeArea(child: IconButton(icon: const Icon(Icons.close, color: AppTheme.palePine), onPressed: () => Navigator.of(context).pop()))),
               if (_celebrate != null && data.displayMode != 'PROGRESS_ONLY') _celebration(_celebrate!),
             ]),
     );
@@ -120,29 +120,29 @@ class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
       final meter = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('BUILDING THEIR FIRST HOME', style: GoogleFonts.outfit(fontSize: 12, letterSpacing: 4, color: AppTheme.lightGold)),
         const SizedBox(height: 6),
-        Text(data.wedding.couple, style: GoogleFonts.cinzel(fontSize: wide ? 40 : 26, fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(data.wedding.couple, style: GoogleFonts.cinzel(fontSize: wide ? 40 : 26, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
         const SizedBox(height: 18),
         Text('${Formatters.number(r.fundedSft)} / ${Formatters.sqft(r.totalSft)}', style: GoogleFonts.cinzel(fontSize: wide ? 44 : 28, fontWeight: FontWeight.bold, color: AppTheme.lightGold)),
         const SizedBox(height: 10),
-        GoldProgressBar(value: r.progress, height: 18, track: Colors.white24),
+        GoldProgressBar(value: r.progress, height: 18, track: AppTheme.palePine.withValues(alpha: 0.24)),
         const SizedBox(height: 6),
-        Text('${Formatters.percent(r.progress)} • ${Formatters.inr(r.raisedPaise)} gifted with love', style: GoogleFonts.outfit(fontSize: 16, color: Colors.white)),
+        Text('${Formatters.percent(r.progress)} • ${Formatters.inr(r.raisedPaise)} gifted with love', style: GoogleFonts.outfit(fontSize: 16, color: AppTheme.palePine)),
         const SizedBox(height: 18),
         Wrap(spacing: 10, runSpacing: 10, children: [
           for (final room in data.registry.rooms)
             Container(
               width: wide ? 200 : 150,
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(color: AppTheme.palePine.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Icon(roomIcon(room.icon), size: 16, color: Colors.white),
+                  Icon(roomIcon(room.icon), size: 16, color: AppTheme.palePine),
                   const SizedBox(width: 6),
-                  Expanded(child: Text(room.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600))),
+                  Expanded(child: Text(room.name, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(color: AppTheme.palePine, fontWeight: FontWeight.w600))),
                 ]),
                 const SizedBox(height: 6),
-                GoldProgressBar(value: room.sft == 0 ? 0 : room.fundedSft / room.sft, height: 6, track: Colors.white24),
-                Text('${room.fundedSft}/${room.sft} sq.ft.', style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70)),
+                GoldProgressBar(value: room.sft == 0 ? 0 : room.fundedSft / room.sft, height: 6, track: AppTheme.palePine.withValues(alpha: 0.24)),
+                Text('${room.fundedSft}/${room.sft} sq.ft.', style: GoogleFonts.outfit(fontSize: 11, color: AppTheme.palePine)),
               ]),
             ),
         ]),
@@ -150,7 +150,7 @@ class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
       final side = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+          decoration: BoxDecoration(color: AppTheme.palePine, borderRadius: BorderRadius.circular(18)),
           child: Row(children: [
             Image.network('${AppConfig.apiBase}/weddings/${widget.slug}/stage/qr.png', width: 110, height: 110),
             const SizedBox(width: 12),
@@ -169,14 +169,14 @@ class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
             child: Container(
               key: ValueKey(blessing.id),
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(18)),
+              decoration: BoxDecoration(color: AppTheme.palePine.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(18)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (blessing.photoUrl != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(blessing.photoUrl!, height: 140, width: double.infinity, fit: BoxFit.cover)),
                   ),
-                if (blessing.message != null) Text('"${blessing.message}"', style: GoogleFonts.playfairDisplay(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.white)),
+                if (blessing.message != null) Text('"${blessing.message}"', style: GoogleFonts.playfairDisplay(fontSize: 18, fontStyle: FontStyle.italic, color: AppTheme.palePine)),
                 const SizedBox(height: 8),
                 Text('— ${blessing.authorName}', style: GoogleFonts.outfit(color: AppTheme.lightGold)),
               ]),
@@ -200,7 +200,7 @@ class _LiveStageScreenState extends ConsumerState<LiveStageScreen> {
 
   Widget _celebration(WallEntry e) => Positioned.fill(
         child: Container(
-          color: Colors.black54,
+          color: AppTheme.deepBurgundy.withValues(alpha: 0.54),
           alignment: Alignment.center,
           child: Container(
             margin: const EdgeInsets.all(24),
@@ -254,7 +254,7 @@ class _TickerState extends State<_Ticker> {
     final items = [...widget.donors, ...widget.donors];
     return Container(
       height: 48,
-      color: Colors.black26,
+      color: AppTheme.deepBurgundy.withValues(alpha: 0.26),
       child: ListView.separated(
         controller: _controller,
         scrollDirection: Axis.horizontal,
@@ -265,7 +265,7 @@ class _TickerState extends State<_Ticker> {
         itemBuilder: (_, i) => Center(
           child: Text.rich(TextSpan(children: [
             TextSpan(text: items[i].donorName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: AppTheme.lightGold, fontSize: 15)),
-            TextSpan(text: ' gifted ${items[i].units} sq.ft. of the ${items[i].roomName}', style: GoogleFonts.outfit(color: Colors.white, fontSize: 15)),
+            TextSpan(text: ' gifted ${items[i].units} sq.ft. of the ${items[i].roomName}', style: GoogleFonts.outfit(color: AppTheme.palePine, fontSize: 15)),
           ])),
         ),
       ),

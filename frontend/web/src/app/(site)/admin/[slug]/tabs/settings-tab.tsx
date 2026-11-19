@@ -166,7 +166,7 @@ function MembersCard({ slug, canManage }: { slug: string; canManage: boolean }) 
               </div>
               {canManage && m.role !== "HOST" && (
                 <button
-                  className="rounded-lg p-2 text-maroon hover:bg-rose-50"
+                  className="rounded-lg p-2 text-maroon hover:bg-gold"
                   aria-label="Remove member"
                   onClick={() => {
                     if (confirm(`Remove ${m.user.name ?? m.user.phone}?`)) remove.mutate(m.id);

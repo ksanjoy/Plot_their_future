@@ -23,7 +23,7 @@ export function CelebrationFeed() {
           <Link key={w.slug} href={`/w/${w.slug}`} className="card group overflow-hidden transition hover:-translate-y-0.5 hover:border-gold">
             <div
               className="maroon-gradient relative flex h-32 items-center justify-center bg-cover bg-center"
-              style={w.coverPhotoUrl ? { backgroundImage: `linear-gradient(rgba(94,18,32,.55),rgba(94,18,32,.55)),url(${w.coverPhotoUrl})` } : undefined}
+              style={w.coverPhotoUrl ? { backgroundImage: `linear-gradient(rgba(115,19,40,.55),rgba(115,19,40,.55)),url(${w.coverPhotoUrl})` } : undefined}
             >
               <span className="font-display text-3xl font-bold text-gold-light">{w.monogram}</span>
               <span className="absolute top-3 right-3 rounded-full bg-white/90 px-2.5 py-0.5 text-xs font-semibold text-maroon">

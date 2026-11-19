@@ -187,7 +187,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
       controller: widget.controller,
       padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
       children: [
-        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(4)))),
+        Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.deepBurgundy.withValues(alpha: 0.26), borderRadius: BorderRadius.circular(4)))),
         const SizedBox(height: 12),
         Text('RSVP', style: GoogleFonts.cinzel(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.crimsonMaroon)),
         const SizedBox(height: 12),

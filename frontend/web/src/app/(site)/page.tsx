@@ -78,7 +78,7 @@ export default function HomePage() {
                   <span className="gold-gradient flex h-10 w-10 items-center justify-center rounded-full text-ink">
                     <s.icon size={18} />
                   </span>
-                  <span className="font-display text-sm font-bold text-gold">STEP {i + 1}</span>
+                  <span className="font-display text-sm font-bold text-maroon">STEP {i + 1}</span>
                 </div>
                 <p className="mt-3 font-serif text-lg font-bold">{s.title}</p>
                 <p className="mt-1 text-sm text-muted">{s.body}</p>

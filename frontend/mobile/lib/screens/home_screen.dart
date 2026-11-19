@@ -26,7 +26,7 @@ class HomeScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.ivoryBackground,
         surfaceTintColor: Colors.transparent,
-        title: Text('Plot Their Future', style: GoogleFonts.playfairDisplay(fontStyle: FontStyle.italic, fontWeight: FontWeight.bold, color: AppTheme.royalGold)),
+        title: Text('Plot Their Future', style: GoogleFonts.playfairDisplay(fontStyle: FontStyle.italic, fontWeight: FontWeight.bold, color: AppTheme.crimsonMaroon)),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: AppTheme.crimsonMaroon),
@@ -72,7 +72,7 @@ class HomeScreen extends ConsumerWidget {
             if (session.weddings.isEmpty)
               LuxuryCard(
                 child: Column(children: [
-                  const Icon(Icons.mail_outline, color: AppTheme.royalGold, size: 40),
+                  const Icon(Icons.mail_outline, color: AppTheme.crimsonMaroon, size: 40),
                   const SizedBox(height: 8),
                   Text('No invitations yet', style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),

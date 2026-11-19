@@ -23,7 +23,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
             fontSize: 24,
             fontWeight: FontWeight.bold,
             fontStyle: FontStyle.italic,
-            color: AppTheme.royalGold,
+            color: AppTheme.deepBurgundy,
           ),
         ),
         centerTitle: true,
@@ -40,7 +40,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
               style: GoogleFonts.playfairDisplay(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFF1E232A),
+                color: AppTheme.deepBurgundy,
               ),
             ),
             const SizedBox(height: 2),
@@ -58,12 +58,12 @@ class WhyGiftSqFtScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.palePine,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFEBDAB0)),
+                border: Border.all(color: AppTheme.deepBurgundy),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
+                    color: AppTheme.deepBurgundy.withValues(alpha: 0.04),
                     blurRadius: 14,
                     offset: const Offset(0, 4),
                   ),
@@ -88,9 +88,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFF1F2),
+                            color: AppTheme.palePine,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFFECDD3)),
+                            border: Border.all(color: AppTheme.deepBurgundy),
                           ),
                           child: Column(
                             children: [
@@ -102,7 +102,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                                 style: GoogleFonts.outfit(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
-                                  color: const Color(0xFF9F1239),
+                                  color: AppTheme.deepBurgundy,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -120,9 +120,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
+                            color: AppTheme.palePine,
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                            border: Border.all(color: AppTheme.butterYellow, width: 2),
                           ),
                           child: Column(
                             children: [
@@ -134,7 +134,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                                 style: GoogleFonts.outfit(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
-                                  color: const Color(0xFF166534),
+                                  color: AppTheme.deepBurgundy,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -156,9 +156,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.palePine,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFEBDAB0)),
+                border: Border.all(color: AppTheme.deepBurgundy),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,9 +207,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFDF8),
+                color: AppTheme.palePine,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFD6C28F), width: 1.5),
+                border: Border.all(color: AppTheme.butterYellow, width: 1.5),
               ),
               child: Column(
                 children: [
@@ -220,7 +220,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                     style: GoogleFonts.playfairDisplay(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF701322),
+                      color: AppTheme.deepBurgundy,
                     ),
                   ),
                   Text(
@@ -229,7 +229,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                       fontSize: 11,
                       fontStyle: FontStyle.italic,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFFB8860B),
+                      color: AppTheme.deepBurgundy,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -238,7 +238,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: GoogleFonts.outfit(
                       fontSize: 12,
-                      color: const Color(0xFF334155),
+                      color: AppTheme.deepBurgundy,
                       height: 1.45,
                     ),
                   ),
@@ -260,9 +260,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFAF5E9),
+                      color: AppTheme.palePine,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE8D6B0)),
+                      border: Border.all(color: AppTheme.deepBurgundy),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +273,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 0.5,
-                            color: const Color(0xFF701322),
+                            color: AppTheme.deepBurgundy,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -281,7 +281,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                           '• Listed by PlotTheirFuture: Created to prevent redundant electronics and misplaced cash envelopes, turning goodwill into lasting home equity.\n• Absolute Free Will: 100% tax-exempt under Section 56(2)(x) with direct escrow settlement to RERA developer account.',
                           style: GoogleFonts.outfit(
                             fontSize: 11,
-                            color: const Color(0xFF475569),
+                            color: AppTheme.deepBurgundy,
                             height: 1.4,
                           ),
                         ),
@@ -296,7 +296,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                     style: GoogleFonts.cormorantGaramond(
                       fontSize: 13,
                       fontStyle: FontStyle.italic,
-                      color: const Color(0xFF64748B),
+                      color: AppTheme.deepBurgundy,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -306,7 +306,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
                     style: GoogleFonts.outfit(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: const Color(0xFF701322),
+                      color: AppTheme.deepBurgundy,
                     ),
                   ),
                 ],
@@ -326,7 +326,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
         text,
         style: GoogleFonts.outfit(
           fontSize: 11,
-          color: isNegative ? const Color(0xFF881337) : const Color(0xFF14532D),
+          color: isNegative ? AppTheme.deepBurgundy : AppTheme.deepBurgundy,
           fontWeight: FontWeight.w500,
         ),
       ),
@@ -355,7 +355,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
             child: Center(
               child: Text(
                 step,
-                style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                style: GoogleFonts.outfit(color: AppTheme.palePine, fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),
           ),
@@ -366,7 +366,7 @@ class WhyGiftSqFtScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(icon, size: 16, color: AppTheme.royalGold),
+                    Icon(icon, size: 16, color: AppTheme.deepBurgundy),
                     const SizedBox(width: 6),
                     Text(
                       title,
@@ -392,9 +392,9 @@ class WhyGiftSqFtScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.palePine,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2D6C0)),
+          border: Border.all(color: AppTheme.deepBurgundy),
         ),
         child: Column(
           children: [
@@ -406,14 +406,14 @@ class WhyGiftSqFtScreen extends StatelessWidget {
               style: GoogleFonts.outfit(
                 fontSize: 9,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFF701322),
+                color: AppTheme.deepBurgundy,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               desc,
               textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(fontSize: 9, color: const Color(0xFF475569), height: 1.2),
+              style: GoogleFonts.outfit(fontSize: 9, color: AppTheme.deepBurgundy, height: 1.2),
             ),
           ],
         ),

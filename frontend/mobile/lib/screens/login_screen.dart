@@ -116,7 +116,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text('Plot Their Future', textAlign: TextAlign.center, style: GoogleFonts.cinzel(fontSize: 26, fontWeight: FontWeight.bold, color: AppTheme.lightGold)),
-                  Text('Skip the boxed gifts, gift a square foot.', textAlign: TextAlign.center, style: GoogleFonts.playfairDisplay(fontSize: 15, fontStyle: FontStyle.italic, color: Colors.white70)),
+                  Text('Skip the boxed gifts, gift a square foot.', textAlign: TextAlign.center, style: GoogleFonts.playfairDisplay(fontSize: 15, fontStyle: FontStyle.italic, color: AppTheme.palePine)),
                   const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.all(20),

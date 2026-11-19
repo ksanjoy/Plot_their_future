@@ -49,7 +49,7 @@ function useRemaining(until: string | undefined) {
 function Expired({ message, slug }: { message: string; slug?: string }) {
   return (
     <div className="card p-8 text-center">
-      <Clock className="mx-auto text-gold" size={40} />
+      <Clock className="mx-auto text-maroon" size={40} />
       <h1 className="mt-3 font-display text-xl font-bold text-maroon">Reservation expired</h1>
       <p className="mt-2 text-sm text-muted">{message}</p>
       {slug && (
@@ -116,7 +116,7 @@ export function CheckoutView() {
       description: p.description,
       prefill: p.prefill,
       notes: p.notes,
-      theme: { color: "#8b1e2d" },
+      theme: { color: "#731328" },
       handler: (resp: RazorpayResponse) => verify.mutate(resp),
     });
     rz.on("payment.failed", (e) => setFailure(e.error.description ?? "Payment failed"));
@@ -155,7 +155,7 @@ export function CheckoutView() {
             </p>
           </div>
           <div className="space-y-4 p-6">
-            <div className="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="flex items-center justify-between rounded-xl bg-gold px-4 py-3 text-sm text-maroon">
               <span className="flex items-center gap-2">
                 <Clock size={16} /> Square feet reserved for you
               </span>
@@ -176,7 +176,7 @@ export function CheckoutView() {
             <CheckoutDisclaimer />
 
             {failure ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+              <div className="rounded-xl border border-maroon bg-ivory p-4 text-sm text-maroon">
                 <p className="flex items-center gap-2 font-semibold">
                   <XCircle size={16} /> {failure}
                 </p>
@@ -204,7 +204,7 @@ export function CheckoutView() {
             ) : null}
             {mutationError && !(mutationError instanceof ApiError && mutationError.status === 410) && <p className="text-sm text-maroon">{errorMessage(mutationError)}</p>}
             <p className="flex items-center gap-1.5 text-xs text-muted">
-              <ShieldCheck size={14} className="text-emerald-700" /> Funds go directly into the couple&apos;s RBI-regulated escrow account.
+              <ShieldCheck size={14} className="text-maroon" /> Funds go directly into the couple&apos;s RBI-regulated escrow account.
             </p>
           </div>
         </div>

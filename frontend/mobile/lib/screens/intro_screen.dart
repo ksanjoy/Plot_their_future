@@ -41,12 +41,12 @@ class _IntroScreenState extends ConsumerState<IntroScreen> {
                   const Spacer(),
                   Text('Plot Their Future', style: GoogleFonts.outfit(color: AppTheme.lightGold, letterSpacing: 2, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 12),
-                  Text(current.title, style: GoogleFonts.cinzel(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(current.title, style: GoogleFonts.cinzel(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
                   const SizedBox(height: 12),
-                  Text(current.body, style: GoogleFonts.playfairDisplay(fontSize: 16, color: Colors.white70, height: 1.4)),
+                  Text(current.body, style: GoogleFonts.playfairDisplay(fontSize: 16, color: AppTheme.palePine, height: 1.4)),
                   const Spacer(),
                   Row(children: [
-                    TextButton(onPressed: _finish, child: Text('Skip', style: GoogleFonts.outfit(color: Colors.white70))),
+                    TextButton(onPressed: _finish, child: Text('Skip', style: GoogleFonts.outfit(color: AppTheme.palePine))),
                     const Spacer(),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: AppTheme.royalGold, foregroundColor: AppTheme.crimsonMaroon),

@@ -247,7 +247,7 @@ class _DispatchCardState extends ConsumerState<_DispatchCard> {
           children: list
               .map((d) => ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.history, color: AppTheme.royalGold),
+                    leading: const Icon(Icons.history, color: AppTheme.crimsonMaroon),
                     title: Text(Formatters.dateTime(d.createdAt), style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                     subtitle: Text('${d.sent}/${d.total} sent • ${d.queued} queued • ${d.failed} failed${d.cohorts.isEmpty ? '' : '\n${d.cohorts.map((c) => cohortLabels[c] ?? c).join(', ')}'}'),
                   ))

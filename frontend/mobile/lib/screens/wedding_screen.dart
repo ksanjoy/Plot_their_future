@@ -114,7 +114,7 @@ class _WeddingScreenState extends ConsumerState<WeddingScreen> with WidgetsBindi
           body: IndexedStack(index: index, children: tabs.map((t) => t.body).toList()),
           bottomNavigationBar: NavigationBar(
             selectedIndex: index,
-            backgroundColor: Colors.white,
+            backgroundColor: AppTheme.palePine,
             indicatorColor: AppTheme.lightGold,
             onDestinationSelected: (i) => setState(() => _index = i),
             destinations: tabs.map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label)).toList(),

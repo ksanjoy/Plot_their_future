@@ -65,7 +65,7 @@ export function FaqList() {
           <div key={f.i} className="card overflow-hidden">
             <button className="flex w-full items-center justify-between gap-4 p-4 text-left font-semibold" onClick={() => setOpen(open === f.i ? null : f.i)} aria-expanded={open === f.i}>
               {f.q}
-              <ChevronDown size={18} className={`shrink-0 text-gold transition ${open === f.i ? "rotate-180" : ""}`} />
+              <ChevronDown size={18} className={`shrink-0 text-maroon transition ${open === f.i ? "rotate-180" : ""}`} />
             </button>
             {open === f.i && <p className="px-4 pb-4 text-sm leading-relaxed text-muted">{f.a}</p>}
           </div>

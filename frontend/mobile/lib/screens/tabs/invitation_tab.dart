@@ -44,7 +44,7 @@ class InvitationTab extends ConsumerWidget {
                   ? Image.network(cover, fit: BoxFit.cover, errorBuilder: (_, _, _) => Image.asset('assets/images/hero_banner.jpg', fit: BoxFit.cover))
                   : Image.asset('assets/images/hero_banner.jpg', fit: BoxFit.cover),
             ),
-            Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.black.withValues(alpha: 0.25), AppTheme.deepCrimson.withValues(alpha: 0.92)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
+            Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [AppTheme.deepBurgundy.withValues(alpha: 0.25), AppTheme.deepCrimson.withValues(alpha: 0.92)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 48, 20, 24),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -53,13 +53,13 @@ class InvitationTab extends ConsumerWidget {
                   style: GoogleFonts.outfit(fontSize: 11, letterSpacing: 2.5, fontWeight: FontWeight.w600, color: AppTheme.lightGold),
                 ),
                 const SizedBox(height: 8),
-                Text(w.brideName, style: GoogleFonts.cinzel(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(w.brideName, style: GoogleFonts.cinzel(fontSize: 30, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
                 Text('&', style: GoogleFonts.playfairDisplay(fontSize: 24, fontStyle: FontStyle.italic, color: AppTheme.lightGold)),
-                Text(w.groomName, style: GoogleFonts.cinzel(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text(w.groomName, style: GoogleFonts.cinzel(fontSize: 30, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
                 const SizedBox(height: 10),
                 if (w.weddingDate != null)
                   Text('${Formatters.weekday(w.weddingDate!)}, ${Formatters.dateLong(w.weddingDate!)}${w.city != null ? ' • ${w.city}' : ''}',
-                      style: GoogleFonts.outfit(color: Colors.white.withValues(alpha: 0.9))),
+                      style: GoogleFonts.outfit(color: AppTheme.palePine.withValues(alpha: 0.9))),
                 if (w.weddingDate != null) ...[
                   const SizedBox(height: 16),
                   CountdownTimerWidget(target: w.weddingDate!),
@@ -75,7 +75,7 @@ class InvitationTab extends ConsumerWidget {
                     ),
                   if (w.videoInviteUrl != null)
                     OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54), shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+                      style: OutlinedButton.styleFrom(foregroundColor: AppTheme.palePine, side: const BorderSide(color: AppTheme.palePine), shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
                       onPressed: () => openLink(context, w.videoInviteUrl!),
                       icon: const Icon(Icons.play_circle_outline, size: 18),
                       label: const Text('Video invitation'),

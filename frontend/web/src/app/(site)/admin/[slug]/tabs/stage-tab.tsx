@@ -18,7 +18,7 @@ export function StageTab({ slug, wedding }: TabProps) {
   return (
     <div className="space-y-6">
       <div className="card flex flex-wrap items-center gap-4 p-5">
-        <MonitorPlay className="text-gold" size={32} />
+        <MonitorPlay className="text-maroon" size={32} />
         <div className="flex-1">
           <h3 className="font-serif text-lg font-bold">Venue LED screen</h3>
           <p className="text-sm text-muted">

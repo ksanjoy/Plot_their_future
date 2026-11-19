@@ -56,7 +56,7 @@ class _CountdownTimerWidgetState extends State<CountdownTimerWidget> {
         border: Border.all(color: AppTheme.goldBorder, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: AppTheme.deepBurgundy.withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),

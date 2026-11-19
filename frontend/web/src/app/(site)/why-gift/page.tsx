@@ -15,12 +15,12 @@ const STEPS = [
 export default function WhyGiftPage() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-12">
-      <p className="text-center text-xs font-semibold tracking-[0.25em] text-gold uppercase">The smarter choice for modern weddings</p>
+      <p className="text-center text-xs font-semibold tracking-[0.25em] text-maroon uppercase">The smarter choice for modern weddings</p>
       <h1 className="mt-3 text-center font-display text-3xl font-bold text-maroon md:text-4xl">Why gift a square foot?</h1>
 
       <div className="mt-10 grid gap-4 md:grid-cols-2">
-        <div className="card border-rose-200 p-6">
-          <p className="font-serif text-xl font-bold text-rose-800">Traditional boxed gifts</p>
+        <div className="card border-maroon p-6">
+          <p className="font-serif text-xl font-bold text-maroon">Traditional boxed gifts</p>
           <ul className="mt-4 space-y-2 text-sm">
             <li>❌ 3-4 duplicate mixer grinders</li>
             <li>❌ Unused crockery & irons</li>
@@ -28,8 +28,8 @@ export default function WhyGiftPage() {
             <li>❌ Depreciates to ₹0 over time</li>
           </ul>
         </div>
-        <div className="card border-emerald-200 p-6">
-          <p className="font-serif text-xl font-bold text-emerald-800">A square foot of their home</p>
+        <div className="card border-gold p-6">
+          <p className="font-serif text-xl font-bold text-maroon">A square foot of their home</p>
           <ul className="mt-4 space-y-2 text-sm">
             <li>✅ Goes straight into the couple&apos;s first home</li>
             <li>✅ Held in RBI tripartite escrow, settled to a RERA builder</li>
@@ -46,7 +46,7 @@ export default function WhyGiftPage() {
             <span className="gold-gradient mx-auto flex h-12 w-12 items-center justify-center rounded-full text-ink">
               <s.icon size={20} />
             </span>
-            <p className="mt-3 font-display text-xs font-bold text-gold">STEP {i + 1}</p>
+            <p className="mt-3 font-display text-xs font-bold text-maroon">STEP {i + 1}</p>
             <p className="mt-1 font-serif text-lg font-bold">{s.title}</p>
             <p className="mt-1 text-sm text-muted">{s.body}</p>
           </div>

@@ -103,7 +103,7 @@ export function FinanceTab({ slug, wedding, role }: TabProps) {
       </div>
 
       <div className="card flex flex-wrap items-center gap-4 p-5">
-        <Landmark className="text-gold" size={28} />
+        <Landmark className="text-maroon" size={28} />
         <div className="flex-1 text-sm">
           <p className="font-semibold">{escrow.bankName ?? "Escrow bank not configured"}</p>
           <p className="text-muted">
@@ -121,7 +121,7 @@ export function FinanceTab({ slug, wedding, role }: TabProps) {
 
       <div>
         <h3 className="flex items-center gap-2 font-serif text-lg font-bold">
-          <ShieldCheck size={18} className="text-emerald-700" /> Settlements (dual control)
+          <ShieldCheck size={18} className="text-maroon" /> Settlements (dual control)
         </h3>
         <p className="text-xs text-muted">Every payout needs the host&apos;s approval and then an independent compliance officer&apos;s approval.</p>
         {!settlements.length ? (
@@ -140,7 +140,7 @@ export function FinanceTab({ slug, wedding, role }: TabProps) {
                     {s.destination === "BUILDER_ESCROW" ? "Builder escrow" : "Home loan"} • {s.accountNumber} • {s.ifsc} • {formatDateTime(s.createdAt, wedding.timezone)}
                   </p>
                   {s.rejectedReason && <p className="mt-1 text-xs text-maroon">Reason: {s.rejectedReason}</p>}
-                  {s.bankReference && <p className="mt-1 text-xs text-emerald-800">UTR {s.bankReference}</p>}
+                  {s.bankReference && <p className="mt-1 text-xs text-maroon">UTR {s.bankReference}</p>}
                 </div>
                 <Badge tone={SETTLEMENT_TONE[s.status]}>{SETTLEMENT_LABEL[s.status]}</Badge>
                 {s.status === "REQUESTED" && (
@@ -196,7 +196,7 @@ export function FinanceTab({ slug, wedding, role }: TabProps) {
                     <td className="px-4 py-2.5 text-xs">
                       {e.contribution ? `${e.contribution.donorName} • ${e.contribution.units} sq.ft. • ${e.contribution.receiptNumber ?? ""}` : e.reference}
                     </td>
-                    <td className={`px-4 py-2.5 text-right font-semibold ${e.type === "CREDIT" ? "text-emerald-800" : "text-maroon"}`}>
+                    <td className={`px-4 py-2.5 text-right font-semibold ${e.type === "CREDIT" ? "text-maroon" : "text-maroon"}`}>
                       {e.type === "CREDIT" ? "+" : "−"}
                       {formatInr(e.amountPaise)}
                     </td>

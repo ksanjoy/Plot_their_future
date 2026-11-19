@@ -71,15 +71,15 @@ class _Summary extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(gradient: AppTheme.maroonGradient, borderRadius: BorderRadius.circular(20)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(w.propertyName ?? 'Their first home', style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-        if (w.propertyLocation != null) Text(w.propertyLocation!, style: GoogleFonts.outfit(fontSize: 12, color: Colors.white70)),
+        Text(w.propertyName ?? 'Their first home', style: GoogleFonts.playfairDisplay(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.palePine)),
+        if (w.propertyLocation != null) Text(w.propertyLocation!, style: GoogleFonts.outfit(fontSize: 12, color: AppTheme.palePine)),
         const SizedBox(height: 14),
         Text('${Formatters.number(s.fundedSft)} / ${Formatters.sqft(s.totalSft)}', style: GoogleFonts.cinzel(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.lightGold)),
         const SizedBox(height: 8),
-        GoldProgressBar(value: s.progress, height: 12, track: Colors.white24),
+        GoldProgressBar(value: s.progress, height: 12, track: AppTheme.palePine.withValues(alpha: 0.24)),
         const SizedBox(height: 6),
         Text('${Formatters.percent(s.progress)} gifted • ${Formatters.inr(s.raisedPaise)} of ${Formatters.inrCompact(s.targetPaise)} • ${Formatters.inr(s.ratePerSftPaise)}/sq.ft.',
-            style: GoogleFonts.outfit(fontSize: 12, color: Colors.white)),
+            style: GoogleFonts.outfit(fontSize: 12, color: AppTheme.palePine)),
         const SizedBox(height: 10),
         Row(children: [
           const Icon(Icons.shield, size: 14, color: AppTheme.lightGold),
@@ -87,7 +87,7 @@ class _Summary extends StatelessWidget {
           Expanded(
             child: Text(
               [w.escrowBankName ?? 'RBI tripartite escrow', if (w.reraRegId != null) 'RERA ${w.reraRegId}'].join(' • '),
-              style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70),
+              style: GoogleFonts.outfit(fontSize: 11, color: AppTheme.palePine),
             ),
           ),
         ]),

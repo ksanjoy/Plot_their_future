@@ -132,7 +132,7 @@ export function CeremoniesTab({ slug, wedding, role }: TabProps) {
                   {c.endsAt && ` – ${formatDateTime(c.endsAt, wedding.timezone)}`}
                 </p>
                 <p className="mt-1 flex items-center gap-1 text-sm">
-                  <MapPin size={14} className="text-gold" /> {c.venueName}
+                  <MapPin size={14} className="text-maroon" /> {c.venueName}
                   {c.dressCode && <span className="text-muted"> • Dress code: {c.dressCode}</span>}
                 </p>
               </div>
@@ -146,7 +146,7 @@ export function CeremoniesTab({ slug, wedding, role }: TabProps) {
                       <Pencil size={16} />
                     </button>
                     <button
-                      className="rounded-lg p-2 text-maroon hover:bg-rose-50"
+                      className="rounded-lg p-2 text-maroon hover:bg-gold"
                       title="Delete"
                       onClick={() => {
                         if (confirm(`Delete "${c.title}"? Guests will no longer see it.`)) remove.mutate(c.id);

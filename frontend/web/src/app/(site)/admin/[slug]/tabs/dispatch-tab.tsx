@@ -86,7 +86,7 @@ export function DispatchTab({ slug }: TabProps) {
         </label>
         <div className="flex items-center justify-between rounded-xl bg-ivory p-3 text-sm">
           <span className="flex items-center gap-2">
-            <Users size={16} className="text-gold" /> Recipients
+            <Users size={16} className="text-maroon" /> Recipients
           </span>
           <span className="font-display text-xl font-bold">{preview.isPending ? "…" : (preview.data?.recipients ?? 0)}</span>
         </div>

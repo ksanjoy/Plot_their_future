@@ -197,7 +197,7 @@ export function GiftSheet({
           </div>
           {lock.isError && <p className="text-sm text-maroon">{errorMessage(lock.error)}</p>}
           <p className="whitespace-pre-line rounded-xl bg-ivory p-3 text-xs text-muted">
-            <ShieldCheck size={14} className="mr-1 inline text-emerald-700" />
+            <ShieldCheck size={14} className="mr-1 inline text-maroon" />
             {disclaimer.data?.disclaimer ??
               "Gifting is completely voluntary. A square foot or brick is a symbolic contribution toward the couple's home down payment, not ownership of property."}
           </p>

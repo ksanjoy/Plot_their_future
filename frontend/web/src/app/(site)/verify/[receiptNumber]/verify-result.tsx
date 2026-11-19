@@ -16,8 +16,8 @@ export function VerifyResult() {
   const r = q.data;
   return (
     <div className="mx-auto w-full max-w-lg px-4 py-14">
-      <div className={`card p-6 text-center ${r.valid ? "border-emerald-300" : "border-rose-300"}`}>
-        {r.valid ? <BadgeCheck className="mx-auto text-emerald-600" size={48} /> : <ShieldAlert className="mx-auto text-rose-600" size={48} />}
+      <div className={`card p-6 text-center ${r.valid ? "border-gold" : "border-maroon"}`}>
+        {r.valid ? <BadgeCheck className="mx-auto text-maroon" size={48} /> : <ShieldAlert className="mx-auto text-maroon" size={48} />}
         <h1 className="mt-3 font-display text-xl font-bold text-maroon">{r.valid ? "Genuine receipt" : "Receipt could not be verified"}</h1>
         <p className="mt-1 font-mono text-sm">{r.receiptNumber}</p>
         {r.valid ? (

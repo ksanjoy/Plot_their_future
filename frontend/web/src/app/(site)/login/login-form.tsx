@@ -86,7 +86,7 @@ export function LoginForm() {
         <Image src="/images/couple_portrait.jpg" alt="" width={700} height={900} className="rounded-[2rem] border-4 border-gold/50 object-cover shadow-2xl" />
       </div>
       <div className="card p-6 md:p-8">
-        <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Private celebration</p>
+        <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">Private celebration</p>
         <h1 className="mt-2 font-display text-2xl font-bold text-maroon">
           {preview.data ? `Namaste, ${preview.data.guestName}` : "Guest login"}
         </h1>

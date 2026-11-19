@@ -41,7 +41,7 @@ function CreateForm() {
 
   return (
     <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-      <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">New celebration</p>
+      <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">New celebration</p>
       <h1 className="mt-1 font-display text-3xl font-bold text-maroon">Create your wedding microsite</h1>
       <p className="mt-2 text-sm text-muted">You&apos;ll be the host. You can change everything later, add co-hosts and invite guests.</p>
       <form

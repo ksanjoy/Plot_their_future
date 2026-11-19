@@ -48,7 +48,7 @@ class LuxuryCard extends StatelessWidget {
             )
           else
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
+              color: AppTheme.deepBurgundy.withValues(alpha: 0.4),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),

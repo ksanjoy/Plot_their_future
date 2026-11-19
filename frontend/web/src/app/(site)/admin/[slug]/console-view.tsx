@@ -74,7 +74,7 @@ function Console({ slug }: { slug: string }) {
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">Host console</p>
+          <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">Host console</p>
           <h1 className="mt-1 font-display text-2xl font-bold text-maroon md:text-3xl">{coupleName(wedding)}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
             {wedding.weddingDate && formatDate(wedding.weddingDate, wedding.timezone)}

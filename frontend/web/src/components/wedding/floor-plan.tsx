@@ -69,7 +69,7 @@ export function FloorPlan({
                   <p className="text-xs text-muted">{room.sft} sq.ft.</p>
                 </div>
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${full ? "bg-emerald-100 text-emerald-800" : "bg-ivory text-muted"}`}>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${full ? "bg-gold text-maroon" : "bg-ivory text-muted"}`}>
                 {full ? "Fully gifted" : `${room.openSft} open`}
               </span>
             </div>

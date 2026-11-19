@@ -36,9 +36,9 @@ class _TilePainter extends CustomPainter {
     final funded = Paint()..color = AppTheme.royalGold;
     final partial = Paint()..color = AppTheme.royalGold.withValues(alpha: 0.45);
     final held = Paint()..color = AppTheme.crimsonMaroon.withValues(alpha: 0.7);
-    final open = Paint()..color = Colors.white;
+    final open = Paint()..color = AppTheme.palePine;
     final border = Paint()
-      ..color = const Color(0xFFEADFCB)
+      ..color = AppTheme.deepBurgundy
       ..style = PaintingStyle.stroke;
     for (var i = 0; i < cells.length; i++) {
       final rect = RRect.fromRectAndRadius(

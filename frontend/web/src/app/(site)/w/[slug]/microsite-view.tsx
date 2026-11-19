@@ -46,7 +46,7 @@ function NotInvited() {
   return (
     <div className="mx-auto my-16 max-w-md px-4 text-center">
       <div className="card p-8">
-        <Lock className="mx-auto text-gold" size={40} />
+        <Lock className="mx-auto text-maroon" size={40} />
         <h1 className="mt-3 font-display text-xl font-bold text-maroon">Private celebration</h1>
         <p className="mt-2 text-sm text-muted">
           {user?.phone} isn&apos;t on this couple&apos;s guest list. Please sign in with the number your invitation was sent to, or ask the hosts to add you.
@@ -287,7 +287,7 @@ function Microsite({ slug }: { slug: string }) {
                 <p className="mt-1 font-serif text-xl font-bold">{formatInr(summary.ratePerSftPaise)} / sq.ft.</p>
               </div>
               <div className="text-xs text-muted">
-                <p className="flex items-center gap-1.5 font-semibold text-emerald-800">
+                <p className="flex items-center gap-1.5 font-semibold text-maroon">
                   <ShieldCheck size={14} /> RBI tripartite escrow
                 </p>
                 {w.escrowBankName && <p className="mt-1">{w.escrowBankName}</p>}

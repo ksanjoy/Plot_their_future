@@ -31,7 +31,7 @@ function WelcomeForm() {
         save.mutate();
       }}
     >
-      <p className="text-xs font-semibold tracking-[0.25em] text-gold uppercase">First sign-in</p>
+      <p className="text-xs font-semibold tracking-[0.25em] text-maroon uppercase">First sign-in</p>
       <h1 className="font-display text-2xl font-bold text-maroon">Tell us who you are</h1>
       <p className="text-sm text-muted">Name, occupation and a password. Next time you can sign in with the password or a one-time code.</p>
       <Field label="Name">

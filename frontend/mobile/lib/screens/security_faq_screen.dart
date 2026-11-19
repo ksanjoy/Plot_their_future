@@ -87,7 +87,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
               style: GoogleFonts.playfairDisplay(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
-                color: const Color(0xFF1E232A),
+                color: AppTheme.deepBurgundy,
               ),
             ),
             const SizedBox(height: 2),
@@ -118,7 +118,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
                     icon: Icons.domain_verification,
                     title: 'RERA Builder\nDirect Transfer',
                     subtitle: 'Registered projects only',
-                    color: AppTheme.royalGold,
+                    color: AppTheme.deepBurgundy,
                   ),
                 ),
               ],
@@ -140,7 +140,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
                     icon: Icons.dashboard_customize,
                     title: 'Flexible\nFractional Gifting',
                     subtitle: 'Gift 1 SFT to full rooms',
-                    color: const Color(0xFF2563EB),
+                    color: AppTheme.deepBurgundy,
                   ),
                 ),
               ],
@@ -151,9 +151,9 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppTheme.palePine,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFEBDAB0)),
+                border: Border.all(color: AppTheme.deepBurgundy),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,10 +210,10 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
             ...filteredFaqs.map((faq) => Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Material(
-                    color: Colors.white,
+                    color: AppTheme.palePine,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
-                      side: const BorderSide(color: Color(0xFFE2D6C0)),
+                      side: const BorderSide(color: AppTheme.deepBurgundy),
                     ),
                     child: Theme(
                       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -242,7 +242,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
                             faq['a']!,
                             style: GoogleFonts.outfit(
                               fontSize: 12,
-                              color: const Color(0xFF475569),
+                              color: AppTheme.deepBurgundy,
                               height: 1.45,
                             ),
                           ),
@@ -267,12 +267,12 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.palePine,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2D6C0)),
+        border: Border.all(color: AppTheme.deepBurgundy),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: AppTheme.deepBurgundy.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -312,7 +312,7 @@ class _SecurityFaqScreenState extends State<SecurityFaqScreen> {
             color: AppTheme.royalGold.withValues(alpha: 0.12),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: AppTheme.royalGold, size: 18),
+          child: Icon(icon, color: AppTheme.deepBurgundy, size: 18),
         ),
         const SizedBox(height: 6),
         Text(

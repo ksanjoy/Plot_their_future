@@ -54,7 +54,7 @@ export function RoomsEditor({ rooms, onChange, lockedKeys = [] }: { rooms: RoomI
                 </option>
               ))}
             </select>
-            <button type="button" className="rounded-lg p-2 text-maroon hover:bg-rose-50 disabled:opacity-30" disabled={rooms.length <= 1} onClick={() => onChange(rooms.filter((_, j) => j !== i))} aria-label="Remove room">
+            <button type="button" className="rounded-lg p-2 text-maroon hover:bg-gold disabled:opacity-30" disabled={rooms.length <= 1} onClick={() => onChange(rooms.filter((_, j) => j !== i))} aria-label="Remove room">
               <Trash2 size={16} />
             </button>
             <input
