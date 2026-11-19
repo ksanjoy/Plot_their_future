@@ -15,6 +15,7 @@ import { HealthController } from './health/health.controller.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
+import { PlatformModule } from './platform/platform.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { ReceiptsModule } from './receipts/receipts.module.js';
@@ -48,6 +49,7 @@ import { WeddingsModule } from './weddings/weddings.module.js';
     RsvpModule,
     RegistryModule,
     PaymentsModule,
+    PlatformModule,
     ReceiptsModule,
     BlessingsModule,
     StageModule,

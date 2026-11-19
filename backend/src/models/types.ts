@@ -31,11 +31,36 @@ export type SettlementDestination = (typeof SETTLEMENT_DESTINATIONS)[number];
 export const LEDGER_TYPES = ['CREDIT', 'DEBIT', 'REFUND'] as const;
 export type LedgerType = (typeof LEDGER_TYPES)[number];
 
+export const APPROVAL_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED'] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+export const LINK_VISIBILITIES = ['PUBLIC', 'PRIVATE', 'PAUSED'] as const;
+export type LinkVisibility = (typeof LINK_VISIBILITIES)[number];
+
+export const KYC_STATUSES = ['NOT_REQUIRED', 'REQUIRED', 'SUBMITTED', 'VERIFIED', 'REJECTED'] as const;
+export type KycStatus = (typeof KYC_STATUSES)[number];
+
+export const FLAT_STATUSES = ['AVAILABLE', 'RESERVED', 'COMPLETED', 'ARCHIVED'] as const;
+export type FlatStatus = (typeof FLAT_STATUSES)[number];
+
+export const GIFT_UNIT_KINDS = ['SQFT', 'BRICK', 'AMOUNT'] as const;
+export type GiftUnitKind = (typeof GIFT_UNIT_KINDS)[number];
+
+export const FOOD_PREFERENCES = ['VEG', 'NON_VEG', 'JAIN', 'OTHER'] as const;
+export type FoodPreference = (typeof FOOD_PREFERENCES)[number];
+
 export interface User {
   phone: string;
   name: string | null;
   email: string | null;
+  occupation: string | null;
+  passwordHash: string | null;
   isPlatformAdmin: boolean;
+  blockedAt: Date | null;
+  blockedReason: string | null;
+  messageOptOut: boolean;
+  locale: string;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -71,6 +96,20 @@ export interface Wedding {
   escrowIfsc: string | null;
   taxExemptionEnabled: boolean;
   stageDisplayMode: StageDisplayMode;
+  approvalStatus: ApprovalStatus;
+  approvalNote: string | null;
+  contactMobile: string | null;
+  cardImageUrl: string | null;
+  flatId: string | null;
+  linkVisibility: LinkVisibility;
+  brickRatio: number;
+  minGiftPaise: number;
+  targetAmountPaise: number | null;
+  hideAmountsFromGuests: boolean;
+  kycStatus: KycStatus;
+  kycLegalName: string | null;
+  kycIdLast4: string | null;
+  kycNote: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,6 +133,7 @@ export interface Ceremony {
   venueMapsUrl: string | null;
   streamUrl: string | null;
   dressCode: string | null;
+  coverImageUrl: string | null;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
@@ -110,6 +150,9 @@ export interface Invitation {
   refToken: string;
   refLead: string | null;
   userId: string | null;
+  occupation: string | null;
+  messageOptOut: boolean;
+  lastPromoAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -137,8 +180,19 @@ export interface Rsvp {
   checkOutDate: Date | null;
   needsShuttle: boolean;
   note: string | null;
+  accommodationRooms: number;
+  accommodationGuests: number;
+  foodPreference: FoodPreference | null;
+  ceremonyResponses: CeremonyResponse[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CeremonyResponse {
+  ceremonyId: string;
+  status: RsvpStatus;
+  adults: number;
+  children: number;
 }
 
 export interface RoomZone {
@@ -158,6 +212,8 @@ export interface FloorTile {
   status: TileStatus;
   lockedUntil: Date | null;
   contributionId: string | null;
+  fundedBricks: number;
+  heldBricks: number;
 }
 
 export interface Contribution {
@@ -172,6 +228,10 @@ export interface Contribution {
   relationship: string | null;
   blessing: string | null;
   anonymous: boolean;
+  hideAmount: boolean;
+  unitKind: GiftUnitKind;
+  brickCount: number;
+  photoKey: string | null;
   tableNumber: string | null;
   refLead: string | null;
   status: ContributionStatus;
@@ -254,12 +314,125 @@ export interface DispatchMessage {
 export interface NotificationLog {
   channel: string;
   recipient: string;
+  userId: string | null;
   template: string;
   payload: Record<string, unknown>;
   status: DeliveryStatus;
   providerMessageId: string | null;
   error: string | null;
   createdAt: Date;
+}
+
+export interface Flat {
+  name: string;
+  projectName: string | null;
+  location: string;
+  description: string | null;
+  flatType: string;
+  totalSft: number;
+  pricePerSftPaise: number;
+  brickRatio: number;
+  floorPlanUrl: string | null;
+  photos: string[];
+  amenities: string[];
+  highlights: string[];
+  totalPricePaise: number;
+  targetAmountPaise: number;
+  minGiftPaise: number;
+  status: FlatStatus;
+  reservedWeddingId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FlatArea {
+  flatId: string;
+  key: string;
+  name: string;
+  sft: number;
+  description: string | null;
+  icon: string | null;
+  sortOrder: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Approval {
+  weddingId: string;
+  adminId: string | null;
+  decision: ApprovalStatus;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface AuditLog {
+  actorId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  meta: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface Complaint {
+  userId: string;
+  weddingId: string | null;
+  subject: string;
+  message: string;
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED';
+  resolution: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface LocalizedText {
+  en: string;
+  hi: string;
+  te: string;
+}
+
+export interface IntroScreen {
+  title: LocalizedText;
+  body: LocalizedText;
+}
+
+export interface PlatformContent {
+  key: string;
+  disclaimer: LocalizedText;
+  intro: IntroScreen[];
+  supportPhone: string | null;
+  supportEmail: string | null;
+  terms: LocalizedText;
+  privacy: LocalizedText;
+  templates: Record<string, LocalizedText>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DeviceToken {
+  userId: string;
+  token: string;
+  platform: 'ios' | 'android' | 'web';
+  createdAt: Date;
+}
+
+export interface InAppNotification {
+  userId: string;
+  title: string;
+  body: string;
+  kind: string;
+  readAt: Date | null;
+  createdAt: Date;
+}
+
+export interface BrickAllocation {
+  weddingId: string;
+  tileId: string;
+  contributionId: string;
+  bricks: number;
+  status: 'HOLD' | 'FUNDED' | 'RELEASED';
 }
 
 export interface PaymentEvent {

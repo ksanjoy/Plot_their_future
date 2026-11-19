@@ -13,7 +13,22 @@ const rsvpSchema = z.object({
   children: z.number().int().min(0).max(10).default(0),
   infants: z.number().int().min(0).max(10).default(0),
   attendingCeremonyIds: z.array(objectId).max(50).default([]),
-  dietary: z.array(z.enum(['VEG', 'NON_VEG', 'JAIN', 'VEGAN', 'SATVIK', 'GLUTEN_FREE'])).max(6).default([]),
+  dietary: z.array(z.enum(['VEG', 'NON_VEG', 'JAIN', 'VEGAN', 'SATVIK', 'GLUTEN_FREE', 'OTHER'])).max(6).default([]),
+  foodPreference: z.enum(['VEG', 'NON_VEG', 'JAIN', 'OTHER']).nullish(),
+  accommodationRooms: z.number().int().min(0).max(20).default(0),
+  accommodationGuests: z.number().int().min(0).max(40).default(0),
+  ceremonyResponses: z
+    .array(
+      z.object({
+        ceremonyId: objectId,
+        status: z.enum(['ATTENDING', 'DECLINED', 'MAYBE']),
+        adults: z.number().int().min(0).max(10).default(0),
+        children: z.number().int().min(0).max(10).default(0),
+      }),
+    )
+    .max(20)
+    .optional(),
+  occupation: z.string().trim().min(1).max(80).optional(),
   allergies: text(200),
   arrivalMode: z.enum(['FLIGHT', 'TRAIN', 'ROAD', 'LOCAL']).nullish(),
   arrivalDetails: text(120),

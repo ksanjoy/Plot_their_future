@@ -37,6 +37,9 @@ const weddingFields = {
   escrowIfsc: z.string().trim().toUpperCase().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'invalid IFSC').nullish(),
   taxExemptionEnabled: z.boolean().optional(),
   stageDisplayMode: z.enum(['NAMES_AND_BLESSINGS', 'ANONYMIZED', 'PROGRESS_ONLY']).optional(),
+  linkVisibility: z.enum(['PUBLIC', 'PRIVATE', 'PAUSED']).optional(),
+  hideAmountsFromGuests: z.boolean().optional(),
+  contactMobile: z.string().trim().min(6).max(20).nullish(),
 };
 
 export const createWeddingSchema = z.object({

@@ -42,6 +42,15 @@ export class WeddingAccessService {
         message: 'This is a private celebration. Your number is not on the guest list.',
       });
 
+    const status = wedding.approvalStatus ?? 'APPROVED';
+    const visibility = wedding.linkVisibility ?? 'PUBLIC';
+    if (role === 'GUEST' && (status !== 'APPROVED' || visibility === 'PAUSED')) {
+      throw new ForbiddenException({
+        code: visibility === 'PAUSED' ? 'LINK_PAUSED' : 'NOT_PUBLISHED',
+        message: visibility === 'PAUSED' ? 'The couple has paused this invitation link.' : 'This celebration is not published yet.',
+      });
+    }
+
     return { user, wedding, role, member, invitation };
   }
 

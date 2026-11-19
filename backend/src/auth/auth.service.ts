@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import { JwtService } from '@nestjs/jwt';
 import { InjectEnv, type Env } from '../config/config.module.js';
 import type { AccessTokenPayload, AuthUser } from '../common/auth.js';
-import { randomToken, sha256 } from '../common/utils/crypto.js';
+import { hashPassword, randomToken, sha256, verifyPassword } from '../common/utils/crypto.js';
 import { maskPhone, toE164 } from '../common/utils/phone.js';
 import { InvitationModel, SessionModel, UserModel, WeddingMemberModel, WeddingModel, type UserDoc, type WeddingDoc } from '../models/schemas.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
@@ -65,26 +65,65 @@ export class AuthService {
     };
   }
 
-  async verifyOtp(input: { phone: string; otp: string; name?: string }, userAgent?: string) {
+  async verifyOtp(
+    input: { phone: string; otp: string; name?: string; occupation?: string; password?: string },
+    userAgent?: string,
+  ) {
     const phone = this.normalisePhone(input.phone);
     await this.otp.verify(phone, input.otp);
 
     const isPlatformAdmin = this.env.PLATFORM_ADMIN_PHONES.includes(phone);
     const existing = await UserModel.findOne({ phone });
     let user: UserDoc;
+    const passwordHash = input.password ? await hashPassword(input.password) : undefined;
     if (existing) {
-      const patch: { isPlatformAdmin?: boolean; name?: string } = {};
+      this.assertActive(existing);
+      const patch: { isPlatformAdmin?: boolean; name?: string; occupation?: string; passwordHash?: string; deletedAt?: null } = {};
       if (isPlatformAdmin && !existing.isPlatformAdmin) patch.isPlatformAdmin = true;
-      if (!existing.name && input.name) patch.name = input.name;
+      if (input.name) patch.name = input.name;
+      if (input.occupation) patch.occupation = input.occupation;
+      if (passwordHash) patch.passwordHash = passwordHash;
+      if (existing.deletedAt) patch.deletedAt = null;
       user = Object.keys(patch).length
         ? ((await UserModel.findByIdAndUpdate(existing._id, { $set: patch }, { new: true })) ?? existing)
         : existing;
     } else {
-      user = await UserModel.create({ phone, name: input.name ?? null, isPlatformAdmin });
+      user = await UserModel.create({
+        phone,
+        name: input.name ?? null,
+        occupation: input.occupation ?? null,
+        passwordHash: passwordHash ?? null,
+        isPlatformAdmin,
+      });
     }
 
-    await InvitationModel.updateMany({ phone, userId: null }, { $set: { userId: user._id } });
+    await InvitationModel.updateMany(
+      { phone, userId: null },
+      { $set: { userId: user._id, ...(user.occupation ? { occupation: user.occupation } : {}) } },
+    );
     return this.issueTokens(user, userAgent);
+  }
+
+  async login(input: { phone: string; password: string }, userAgent?: string) {
+    const phone = this.normalisePhone(input.phone);
+    const user = await UserModel.findOne({ phone });
+    if (!user?.passwordHash || !(await verifyPassword(input.password, user.passwordHash))) {
+      throw new UnauthorizedException({ code: 'INVALID_LOGIN', message: 'Mobile number or password is incorrect' });
+    }
+    this.assertActive(user);
+    return this.issueTokens(user, userAgent);
+  }
+
+  async completeProfile(authUser: AuthUser, input: { name: string; occupation: string; password: string }) {
+    const passwordHash = await hashPassword(input.password);
+    const user = await UserModel.findByIdAndUpdate(
+      authUser.id,
+      { $set: { name: input.name, occupation: input.occupation, passwordHash, deletedAt: null } },
+      { new: true },
+    );
+    if (!user) throw new NotFoundException('Record not found');
+    await InvitationModel.updateMany({ phone: user.phone }, { $set: { occupation: input.occupation } });
+    return this.publicUser(user);
   }
 
   async refresh(refreshToken: string, userAgent?: string) {
@@ -93,6 +132,7 @@ export class AuthService {
     if (!session) throw new UnauthorizedException('Invalid refresh token');
     const user = session.get('user') as UserDoc | undefined;
     if (!user) throw new UnauthorizedException('Invalid refresh token');
+    this.assertActive(user);
     if (session.revokedAt) {
       await SessionModel.updateMany({ userId: session.userId, revokedAt: null }, { $set: { revokedAt: new Date() } });
       throw new UnauthorizedException('Refresh token reuse detected. Please sign in again.');
@@ -112,13 +152,42 @@ export class AuthService {
     return { user: this.publicUser(user), weddings: await this.accessibleWeddings(user) };
   }
 
-  async updateProfile(authUser: AuthUser, data: { name?: string; email?: string | null }) {
-    const patch: { name?: string; email?: string | null } = {};
+  async updateProfile(
+    authUser: AuthUser,
+    data: { name?: string; email?: string | null; occupation?: string | null; locale?: string; messageOptOut?: boolean },
+  ) {
+    const patch: { name?: string; email?: string | null; occupation?: string | null; locale?: string; messageOptOut?: boolean } = {};
     if (data.name !== undefined) patch.name = data.name;
     if (data.email !== undefined) patch.email = data.email;
+    if (data.occupation !== undefined) patch.occupation = data.occupation;
+    if (data.locale !== undefined) patch.locale = data.locale;
+    if (data.messageOptOut !== undefined) patch.messageOptOut = data.messageOptOut;
     const user = await UserModel.findByIdAndUpdate(authUser.id, { $set: patch }, { new: true });
     if (!user) throw new NotFoundException('Record not found');
+    if (data.messageOptOut !== undefined) {
+      await InvitationModel.updateMany({ phone: user.phone }, { $set: { messageOptOut: data.messageOptOut } });
+    }
+    if (data.occupation) await InvitationModel.updateMany({ phone: user.phone }, { $set: { occupation: data.occupation } });
     return this.publicUser(user);
+  }
+
+  /** DPDP erasure: drop profile fields and sign-in secrets. The phone stays so wedding records remain consistent. */
+  async erase(authUser: AuthUser) {
+    await UserModel.updateOne(
+      { _id: authUser.id },
+      {
+        $set: {
+          name: null,
+          email: null,
+          occupation: null,
+          passwordHash: null,
+          messageOptOut: true,
+          deletedAt: new Date(),
+        },
+      },
+    );
+    await SessionModel.updateMany({ userId: authUser.id, revokedAt: null }, { $set: { revokedAt: new Date() } });
+    await InvitationModel.updateMany({ phone: authUser.phone }, { $set: { messageOptOut: true, occupation: null } });
   }
 
   async accessibleWeddings(user: { id: string; phone: string }): Promise<AccessibleWedding[]> {
@@ -182,7 +251,26 @@ export class AuthService {
     };
   }
 
+  private assertActive(user: UserDoc) {
+    if (user.blockedAt) {
+      throw new ForbiddenException({
+        code: 'ACCOUNT_BLOCKED',
+        message: user.blockedReason ? `This account is blocked: ${user.blockedReason}` : 'This account is blocked. Contact support.',
+      });
+    }
+  }
+
   private publicUser(user: UserDoc) {
-    return { id: user.id, phone: user.phone, name: user.name, email: user.email, isPlatformAdmin: user.isPlatformAdmin };
+    return {
+      id: user.id,
+      phone: user.phone,
+      name: user.name,
+      email: user.email,
+      occupation: user.occupation,
+      isPlatformAdmin: user.isPlatformAdmin,
+      profileComplete: Boolean(user.name && user.occupation && user.passwordHash),
+      messageOptOut: user.messageOptOut,
+      locale: user.locale || 'en',
+    };
   }
 }

@@ -1,7 +1,8 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { InjectEnv, type Env } from '../config/config.module.js';
+import { UserModel } from '../models/schemas.js';
 import { IS_PUBLIC, type AccessTokenPayload, type AuthUser } from './auth.js';
 
 @Injectable()
@@ -23,7 +24,15 @@ export class JwtAuthGuard implements CanActivate {
       try {
         const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, { secret: this.env.JWT_ACCESS_SECRET });
         req.user = { id: payload.sub, phone: payload.phone, isPlatformAdmin: payload.adm } satisfies AuthUser;
-      } catch {
+        const row = await UserModel.findById(payload.sub).select('blockedAt blockedReason');
+        if (row?.blockedAt) {
+          throw new ForbiddenException({
+            code: 'ACCOUNT_BLOCKED',
+            message: row.blockedReason ? `This account is blocked: ${row.blockedReason}` : 'This account is blocked. Contact support.',
+          });
+        }
+      } catch (err) {
+        if (err instanceof ForbiddenException) throw err;
         if (!isPublic) throw new UnauthorizedException('Invalid or expired access token');
       }
     }

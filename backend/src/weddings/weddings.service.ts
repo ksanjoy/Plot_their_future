@@ -62,6 +62,17 @@ export class WeddingsService {
       escrowAccountLast4: w.escrowAccountNumber?.slice(-4) ?? null,
       taxExemptionEnabled: w.taxExemptionEnabled,
       stageDisplayMode: w.stageDisplayMode,
+      approvalStatus: w.approvalStatus ?? 'APPROVED',
+      approvalNote: w.approvalNote ?? null,
+      contactMobile: full ? w.contactMobile ?? null : null,
+      cardImageUrl: w.cardImageUrl ?? null,
+      flatId: w.flatId ? String(w.flatId) : null,
+      linkVisibility: w.linkVisibility ?? 'PUBLIC',
+      brickRatio: w.brickRatio || 10,
+      minGiftPaise: w.minGiftPaise || 0,
+      targetAmountPaise: w.targetAmountPaise ?? null,
+      hideAmountsFromGuests: w.hideAmountsFromGuests ?? false,
+      kycStatus: w.kycStatus ?? 'NOT_REQUIRED',
       createdAt: w.createdAt,
     };
   }
@@ -181,7 +192,12 @@ export class WeddingsService {
 
   /** Multi-tenant discovery feed: other couples' celebrations stay masked. */
   async publicFeed(user?: AuthUser) {
-    const weddings = await WeddingModel.find()
+    const weddings = await WeddingModel.find({
+      $and: [
+        { $or: [{ approvalStatus: 'APPROVED' }, { approvalStatus: { $exists: false } }] },
+        { linkVisibility: { $nin: ['PRIVATE', 'PAUSED'] } },
+      ],
+    })
       .sort({ weddingDate: 1, createdAt: -1 })
       .limit(50)
       .select('slug brideName groomName weddingDate city coverPhotoUrl totalSft');
@@ -232,6 +248,9 @@ export class WeddingsService {
     const inv = await InvitationModel.findOne({ refToken }).populate<{ wedding: WeddingDoc }>('wedding');
     const wedding = inv?.get('wedding') as WeddingDoc | undefined;
     if (!inv || !wedding) throw new NotFoundException('Invitation not found');
+    if (wedding.linkVisibility === 'PAUSED' || (wedding.approvalStatus && wedding.approvalStatus !== 'APPROVED')) {
+      throw new NotFoundException('Invitation not found');
+    }
     return {
       guestName: inv.guestName,
       maskedPhone: maskPhone(inv.phone),
@@ -246,15 +265,15 @@ export class WeddingsService {
     };
   }
 
-  async uploadMedia(access: WeddingAccess, kind: 'cover' | 'video', file: { buffer: Buffer; mimetype: string; size: number }) {
-    const allowed = kind === 'cover' ? ['image/jpeg', 'image/png', 'image/webp'] : ['video/mp4', 'video/webm'];
-    const maxBytes = kind === 'cover' ? this.env.MAX_UPLOAD_MB * 1024 * 1024 : 100 * 1024 * 1024;
+  async uploadMedia(access: WeddingAccess, kind: 'cover' | 'video' | 'card', file: { buffer: Buffer; mimetype: string; size: number }) {
+    const allowed = kind === 'video' ? ['video/mp4', 'video/webm'] : ['image/jpeg', 'image/png', 'image/webp'];
+    const maxBytes = kind === 'video' ? 100 * 1024 * 1024 : this.env.MAX_UPLOAD_MB * 1024 * 1024;
     if (!allowed.includes(file.mimetype)) throw new BadRequestException(`Allowed types: ${allowed.join(', ')}`);
     if (file.size > maxBytes) throw new BadRequestException(`File too large (max ${Math.round(maxBytes / 1048576)} MB)`);
     const { url } = await this.storage.put(`${access.wedding.slug}-${kind}`, file.buffer, file.mimetype);
     const updated = await WeddingModel.findByIdAndUpdate(
       access.wedding.id,
-      { $set: kind === 'cover' ? { coverPhotoUrl: url } : { videoInviteUrl: url } },
+      { $set: kind === 'cover' ? { coverPhotoUrl: url } : kind === 'card' ? { cardImageUrl: url } : { videoInviteUrl: url } },
       { new: true },
     );
     if (!updated) throw new NotFoundException('Wedding not found');

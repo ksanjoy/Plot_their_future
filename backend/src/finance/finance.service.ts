@@ -117,6 +117,13 @@ export class FinanceService {
   }
 
   async request(access: WeddingAccess, input: SettlementInput) {
+    const kyc = access.wedding.kycStatus ?? 'NOT_REQUIRED';
+    if (kyc === 'REQUIRED' || kyc === 'SUBMITTED' || kyc === 'REJECTED') {
+      throw new ConflictException({
+        code: 'KYC_REQUIRED',
+        message: 'Payouts need verified identity and bank details for the receiving party',
+      });
+    }
     return withTransaction(async (session) => {
       // Touch the wedding so two concurrent requests conflict and the loser retries after the first commits.
       await WeddingModel.updateOne({ _id: access.wedding._id }, { $currentDate: { updatedAt: true } }, { session });

@@ -1,10 +1,15 @@
 import mongoose, { Schema, Types } from 'mongoose';
 import type { Collection, Doc } from './collection.js';
 import {
+  APPROVAL_STATUSES,
   CONTRIBUTION_STATUSES,
   DELIVERY_STATUSES,
+  FLAT_STATUSES,
+  GIFT_UNIT_KINDS,
   GUEST_COHORTS,
+  KYC_STATUSES,
   LEDGER_TYPES,
+  LINK_VISIBILITIES,
   MEMBER_ROLES,
   MODERATION_STATUSES,
   RSVP_STATUSES,
@@ -12,17 +17,26 @@ import {
   SETTLEMENT_STATUSES,
   STAGE_DISPLAY_MODES,
   TILE_STATUSES,
+  type Approval,
+  type AuditLog,
   type Blessing,
+  type BrickAllocation,
   type Ceremony,
+  type Complaint,
   type Contribution,
+  type DeviceToken,
   type Dispatch,
   type DispatchMessage,
+  type Flat,
+  type FlatArea,
   type FloorTile,
+  type InAppNotification,
   type Invitation,
   type InvitationCeremony,
   type LedgerEntry,
   type NotificationLog,
   type PaymentEvent,
+  type PlatformContent,
   type RoomZone,
   type Rsvp,
   type Session,
@@ -94,7 +108,14 @@ const UserSchema: Schema = define(
     phone: { type: String, required: true, unique: true },
     name: nullableString,
     email: nullableString,
+    occupation: nullableString,
+    passwordHash: nullableString,
     isPlatformAdmin: { type: Boolean, default: false },
+    blockedAt: { type: Date, default: null },
+    blockedReason: nullableString,
+    messageOptOut: { type: Boolean, default: false },
+    locale: { type: String, default: 'en' },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps, collection: 'users' },
 );
@@ -135,6 +156,20 @@ const WeddingSchema: Schema = define(
     escrowIfsc: nullableString,
     taxExemptionEnabled: { type: Boolean, default: true },
     stageDisplayMode: { type: String, enum: STAGE_DISPLAY_MODES, default: 'NAMES_AND_BLESSINGS' },
+    approvalStatus: { type: String, enum: APPROVAL_STATUSES, default: 'APPROVED' },
+    approvalNote: nullableString,
+    contactMobile: nullableString,
+    cardImageUrl: nullableString,
+    flatId: ref('Flat', false),
+    linkVisibility: { type: String, enum: LINK_VISIBILITIES, default: 'PUBLIC' },
+    brickRatio: { type: Number, default: 10 },
+    minGiftPaise: { type: Number, default: 0 },
+    targetAmountPaise: { type: Number, default: null },
+    hideAmountsFromGuests: { type: Boolean, default: false },
+    kycStatus: { type: String, enum: KYC_STATUSES, default: 'NOT_REQUIRED' },
+    kycLegalName: nullableString,
+    kycIdLast4: nullableString,
+    kycNote: nullableString,
   },
   { timestamps, collection: 'weddings' },
 );
@@ -166,6 +201,7 @@ const CeremonySchema: Schema = define(
     venueMapsUrl: nullableString,
     streamUrl: nullableString,
     dressCode: nullableString,
+    coverImageUrl: nullableString,
     sortOrder: { type: Number, default: 0 },
   },
   { timestamps, collection: 'ceremonies' },
@@ -185,6 +221,9 @@ const InvitationSchema: Schema = define(
     refToken: { type: String, required: true, unique: true },
     refLead: nullableString,
     userId: ref('User', false),
+    occupation: nullableString,
+    messageOptOut: { type: Boolean, default: false },
+    lastPromoAt: { type: Date, default: null },
   },
   { timestamps, collection: 'invitations' },
 );
@@ -228,6 +267,20 @@ const RsvpSchema: Schema = define(
     checkOutDate: { type: Date, default: null },
     needsShuttle: { type: Boolean, default: false },
     note: nullableString,
+    accommodationRooms: { type: Number, default: 0 },
+    accommodationGuests: { type: Number, default: 0 },
+    foodPreference: nullableString,
+    ceremonyResponses: {
+      type: [
+        {
+          ceremonyId: { type: Schema.Types.ObjectId, ref: 'Ceremony' },
+          status: { type: String, enum: RSVP_STATUSES, required: true },
+          adults: { type: Number, default: 0 },
+          children: { type: Number, default: 0 },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps, collection: 'rsvps' },
 );
@@ -261,6 +314,8 @@ const FloorTileSchema: Schema = define(
     status: { type: String, enum: TILE_STATUSES, default: 'OPEN' },
     lockedUntil: { type: Date, default: null },
     contributionId: ref('Contribution', false),
+    fundedBricks: { type: Number, default: 0 },
+    heldBricks: { type: Number, default: 0 },
   },
   { collection: FLOOR_TILES, versionKey: false },
 );
@@ -286,6 +341,10 @@ const ContributionSchema: Schema = define(
     relationship: nullableString,
     blessing: nullableString,
     anonymous: { type: Boolean, default: false },
+    hideAmount: { type: Boolean, default: false },
+    unitKind: { type: String, enum: GIFT_UNIT_KINDS, default: 'SQFT' },
+    brickCount: { type: Number, default: 0 },
+    photoKey: nullableString,
     tableNumber: nullableString,
     refLead: nullableString,
     status: { type: String, enum: CONTRIBUTION_STATUSES, default: 'PENDING' },
@@ -412,6 +471,7 @@ const NotificationLogSchema: Schema = define(
   {
     channel: { type: String, required: true },
     recipient: { type: String, required: true },
+    userId: ref('User', false),
     template: { type: String, required: true },
     payload: { type: Schema.Types.Mixed, required: true },
     status: { type: String, enum: DELIVERY_STATUSES, required: true },
@@ -433,6 +493,145 @@ const PaymentEventSchema: Schema = define(
 );
 PaymentEventSchema.index({ provider: 1, eventId: 1 }, { unique: true });
 
+const localized = () => ({
+  en: { type: String, default: '' },
+  hi: { type: String, default: '' },
+  te: { type: String, default: '' },
+});
+
+const FlatSchema: Schema = define(
+  {
+    name: { type: String, required: true },
+    projectName: nullableString,
+    location: { type: String, required: true },
+    description: nullableString,
+    flatType: { type: String, required: true },
+    totalSft: { type: Number, required: true },
+    pricePerSftPaise: { type: Number, required: true },
+    brickRatio: { type: Number, default: 10 },
+    floorPlanUrl: nullableString,
+    photos: { type: [String], default: [] },
+    amenities: { type: [String], default: [] },
+    highlights: { type: [String], default: [] },
+    totalPricePaise: { type: Number, required: true },
+    targetAmountPaise: { type: Number, required: true },
+    minGiftPaise: { type: Number, default: 0 },
+    status: { type: String, enum: FLAT_STATUSES, default: 'AVAILABLE' },
+    reservedWeddingId: ref('Wedding', false),
+  },
+  { timestamps, collection: 'flats' },
+);
+FlatSchema.index({ status: 1, createdAt: -1 });
+
+const FlatAreaSchema: Schema = define(
+  {
+    flatId: ref('Flat'),
+    key: { type: String, required: true },
+    name: { type: String, required: true },
+    sft: { type: Number, required: true },
+    description: nullableString,
+    icon: nullableString,
+    sortOrder: { type: Number, default: 0 },
+    x: { type: Number, default: 0 },
+    y: { type: Number, default: 0 },
+    w: { type: Number, default: 10 },
+    h: { type: Number, default: 10 },
+  },
+  { collection: 'flat_areas', versionKey: false },
+);
+FlatAreaSchema.index({ flatId: 1, key: 1 }, { unique: true });
+FlatAreaSchema.index({ flatId: 1, sortOrder: 1 });
+
+const ApprovalSchema: Schema = define(
+  {
+    weddingId: ref('Wedding'),
+    adminId: ref('User', false),
+    decision: { type: String, enum: APPROVAL_STATUSES, required: true },
+    reason: nullableString,
+  },
+  { timestamps: createdOnly, collection: 'approvals' },
+);
+ApprovalSchema.index({ weddingId: 1, createdAt: -1 });
+
+const AuditLogSchema: Schema = define(
+  {
+    actorId: ref('User', false),
+    action: { type: String, required: true },
+    entityType: { type: String, required: true },
+    entityId: nullableString,
+    meta: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: createdOnly, collection: 'audit_logs', minimize: false },
+);
+AuditLogSchema.index({ createdAt: -1 });
+AuditLogSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
+
+const ComplaintSchema: Schema = define(
+  {
+    userId: ref('User'),
+    weddingId: ref('Wedding', false),
+    subject: { type: String, required: true },
+    message: { type: String, required: true },
+    status: { type: String, enum: ['OPEN', 'IN_REVIEW', 'RESOLVED'], default: 'OPEN' },
+    resolution: nullableString,
+  },
+  { timestamps, collection: 'complaints' },
+);
+ComplaintSchema.index({ status: 1, createdAt: -1 });
+ComplaintSchema.virtual('user', { ref: 'User', localField: 'userId', foreignField: '_id', justOne: true });
+
+const PlatformContentSchema: Schema = define(
+  {
+    key: { type: String, required: true, unique: true },
+    disclaimer: localized(),
+    intro: {
+      type: [{ title: localized(), body: localized() }],
+      default: [],
+    },
+    supportPhone: nullableString,
+    supportEmail: nullableString,
+    terms: localized(),
+    privacy: localized(),
+    templates: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps, collection: 'platform_content', minimize: false },
+);
+
+const DeviceTokenSchema: Schema = define(
+  {
+    userId: ref('User'),
+    token: { type: String, required: true, unique: true },
+    platform: { type: String, enum: ['ios', 'android', 'web'], required: true },
+  },
+  { timestamps: createdOnly, collection: 'device_tokens' },
+);
+DeviceTokenSchema.index({ userId: 1 });
+
+const InAppNotificationSchema: Schema = define(
+  {
+    userId: ref('User'),
+    title: { type: String, required: true },
+    body: { type: String, required: true },
+    kind: { type: String, default: 'general' },
+    readAt: { type: Date, default: null },
+  },
+  { timestamps: createdOnly, collection: 'in_app_notifications' },
+);
+InAppNotificationSchema.index({ userId: 1, createdAt: -1 });
+
+const BrickAllocationSchema: Schema = define(
+  {
+    weddingId: ref('Wedding'),
+    tileId: ref('FloorTile'),
+    contributionId: ref('Contribution'),
+    bricks: { type: Number, required: true },
+    status: { type: String, enum: ['HOLD', 'FUNDED', 'RELEASED'], default: 'HOLD' },
+  },
+  { collection: 'brick_allocations', versionKey: false },
+);
+BrickAllocationSchema.index({ contributionId: 1, status: 1 });
+BrickAllocationSchema.index({ tileId: 1, status: 1 });
+
 export const UserModel = register<User>('User', UserSchema, 'users');
 export const SessionModel = register<Session>('Session', SessionSchema, 'sessions');
 export const WeddingModel = register<Wedding>('Wedding', WeddingSchema, 'weddings');
@@ -451,6 +650,15 @@ export const DispatchModel = register<Dispatch>('Dispatch', DispatchSchema, 'dis
 export const DispatchMessageModel = register<DispatchMessage>('DispatchMessage', DispatchMessageSchema, 'dispatch_messages');
 export const NotificationLogModel = register<NotificationLog>('NotificationLog', NotificationLogSchema, 'notification_logs');
 export const PaymentEventModel = register<PaymentEvent>('PaymentEvent', PaymentEventSchema, 'payment_events');
+export const FlatModel = register<Flat>('Flat', FlatSchema, 'flats');
+export const FlatAreaModel = register<FlatArea>('FlatArea', FlatAreaSchema, 'flat_areas');
+export const ApprovalModel = register<Approval>('Approval', ApprovalSchema, 'approvals');
+export const AuditLogModel = register<AuditLog>('AuditLog', AuditLogSchema, 'audit_logs');
+export const ComplaintModel = register<Complaint>('Complaint', ComplaintSchema, 'complaints');
+export const PlatformContentModel = register<PlatformContent>('PlatformContent', PlatformContentSchema, 'platform_content');
+export const DeviceTokenModel = register<DeviceToken>('DeviceToken', DeviceTokenSchema, 'device_tokens');
+export const InAppNotificationModel = register<InAppNotification>('InAppNotification', InAppNotificationSchema, 'in_app_notifications');
+export const BrickAllocationModel = register<BrickAllocation>('BrickAllocation', BrickAllocationSchema, 'brick_allocations');
 
 export type UserDoc = Doc<User>;
 export type SessionDoc = Doc<Session>;
@@ -468,3 +676,9 @@ export type SettlementDoc = Doc<Settlement>;
 export type BlessingDoc = Doc<Blessing>;
 export type DispatchDoc = Doc<Dispatch>;
 export type DispatchMessageDoc = Doc<DispatchMessage>;
+export type FlatDoc = Doc<Flat>;
+export type FlatAreaDoc = Doc<FlatArea>;
+export type ApprovalDoc = Doc<Approval>;
+export type ComplaintDoc = Doc<Complaint>;
+export type PlatformContentDoc = Doc<PlatformContent>;
+export type InAppNotificationDoc = Doc<InAppNotification>;

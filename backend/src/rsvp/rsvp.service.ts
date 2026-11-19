@@ -13,8 +13,10 @@ import {
   type RsvpDoc,
 } from '../models/schemas.js';
 import type { Invitation, RsvpStatus } from '../models/types.js';
+import { FollowupsService } from '../notifications/followups.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { RealtimeService, rooms } from '../realtime/realtime.service.js';
+import type { FoodPreference } from '../models/types.js';
 
 export interface RsvpInput {
   status: RsvpStatus;
@@ -34,6 +36,11 @@ export interface RsvpInput {
   note?: string | null;
   guestName?: string;
   email?: string | null;
+  accommodationRooms?: number;
+  accommodationGuests?: number;
+  foodPreference?: FoodPreference | null;
+  ceremonyResponses?: { ceremonyId: string; status: RsvpStatus; adults: number; children: number }[];
+  occupation?: string;
 }
 
 @Injectable()
@@ -43,6 +50,7 @@ export class RsvpService {
   constructor(
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeService,
+    private readonly followups: FollowupsService,
   ) {}
 
   private requireInvitation(access: WeddingAccess) {
@@ -72,6 +80,19 @@ export class RsvpService {
     const inv = this.requireInvitation(access);
     const invited = await InvitationCeremonyModel.find({ invitationId: inv._id }).populate<{ ceremony: CeremonyDoc }>('ceremony');
     const invitedIds = new Set(invited.map((i) => idString(i.ceremonyId)));
+    if (input.ceremonyResponses?.length) {
+      const responses = input.ceremonyResponses.filter((row) => invitedIds.has(row.ceremonyId));
+      const attending = responses.filter((row) => row.status === 'ATTENDING');
+      const maybe = responses.filter((row) => row.status === 'MAYBE');
+      input.status = attending.length ? 'ATTENDING' : maybe.length ? 'MAYBE' : 'DECLINED';
+      input.attendingCeremonyIds = responses.filter((row) => row.status !== 'DECLINED').map((row) => row.ceremonyId);
+      const pool = attending.length ? attending : maybe;
+      if (pool.length) {
+        input.adults = Math.max(...pool.map((row) => row.adults));
+        input.children = Math.max(...pool.map((row) => row.children));
+      }
+    }
+    if (input.foodPreference && !input.dietary.includes(input.foodPreference)) input.dietary = [...input.dietary, input.foodPreference];
     const declined = input.status === 'DECLINED';
 
     if (!declined) {
@@ -108,13 +129,23 @@ export class RsvpService {
       checkOutDate: !declined && input.needsAccommodation ? input.checkOutDate ?? null : null,
       needsShuttle: !declined && input.needsShuttle,
       note: input.note ?? null,
+      accommodationRooms: !declined && input.needsAccommodation ? input.accommodationRooms ?? 0 : 0,
+      accommodationGuests: !declined && input.needsAccommodation ? input.accommodationGuests ?? 0 : 0,
+      foodPreference: declined ? null : input.foodPreference ?? null,
+      ceremonyResponses: declined ? [] : input.ceremonyResponses ?? [],
     };
 
     const rsvp = await withTransaction(async (session) => {
-      if (input.guestName || input.email !== undefined) {
+      if (input.guestName || input.email !== undefined || input.occupation) {
         await InvitationModel.updateOne(
           { _id: inv._id },
-          { $set: { ...(input.guestName ? { guestName: input.guestName } : {}), ...(input.email !== undefined ? { email: input.email } : {}) } },
+          {
+            $set: {
+              ...(input.guestName ? { guestName: input.guestName } : {}),
+              ...(input.email !== undefined ? { email: input.email } : {}),
+              ...(input.occupation ? { occupation: input.occupation } : {}),
+            },
+          },
           { session },
         );
       }
@@ -139,6 +170,9 @@ export class RsvpService {
     this.notifications
       .sendRsvpConfirmation({ phone: inv.phone, guestName: input.guestName ?? inv.guestName, couple: `${w.brideName} & ${w.groomName}`, summary, details })
       .catch((err: Error) => this.logger.warn(`RSVP confirmation to ${inv.id} failed: ${err.message}`));
+    if (rsvp.status !== 'DECLINED') {
+      void this.followups.afterRsvp(inv, `${w.brideName} & ${w.groomName}`);
+    }
 
     this.realtime.emit(rooms.admin(w.id), 'rsvp.updated', await this.summary(access.wedding.id));
     return rsvp;
@@ -195,6 +229,9 @@ export class RsvpService {
       byCeremony: ceremonies.map((c) => ({ id: c.id, title: c.title, startsAt: c.startsAt, adults: 0, children: 0, infants: 0, total: 0 })),
       dietary: {} as Record<string, number>,
       accommodation: 0,
+      roomsNeeded: 0,
+      accommodationGuests: 0,
+      meals: { VEG: 0, NON_VEG: 0, JAIN: 0, OTHER: 0 } as Record<string, number>,
       shuttle: 0,
     };
     for (const r of rsvps) {
@@ -205,16 +242,33 @@ export class RsvpService {
       out.headcount.adults += r.adults;
       out.headcount.children += r.children;
       out.headcount.infants += r.infants;
-      const attending = new Set(idStrings(r.attendingCeremonyIds));
-      for (const c of out.byCeremony) {
-        if (!attending.has(c.id)) continue;
-        c.adults += r.adults;
-        c.children += r.children;
-        c.infants += r.infants;
-        c.total += r.adults + r.children + r.infants;
+      const perCeremony = r.ceremonyResponses ?? [];
+      if (perCeremony.length) {
+        for (const response of perCeremony) {
+          if (response.status !== 'ATTENDING') continue;
+          const bucket = out.byCeremony.find((c) => c.id === idString(response.ceremonyId));
+          if (!bucket) continue;
+          bucket.adults += response.adults;
+          bucket.children += response.children;
+          bucket.total += response.adults + response.children;
+        }
+      } else {
+        const attending = new Set(idStrings(r.attendingCeremonyIds));
+        for (const c of out.byCeremony) {
+          if (!attending.has(c.id)) continue;
+          c.adults += r.adults;
+          c.children += r.children;
+          c.infants += r.infants;
+          c.total += r.adults + r.children + r.infants;
+        }
       }
       for (const d of r.dietary) out.dietary[d] = (out.dietary[d] ?? 0) + r.adults + r.children;
-      if (r.needsAccommodation) out.accommodation += r.adults + r.children + r.infants;
+      if (r.foodPreference) out.meals[r.foodPreference] = (out.meals[r.foodPreference] ?? 0) + r.adults + r.children;
+      if (r.needsAccommodation) {
+        out.accommodation += r.adults + r.children + r.infants;
+        out.roomsNeeded += r.accommodationRooms || 0;
+        out.accommodationGuests += r.accommodationGuests || r.adults + r.children;
+      }
       if (r.needsShuttle) out.shuttle += r.adults + r.children + r.infants;
     }
     out.headcount.total = out.headcount.adults + out.headcount.children + out.headcount.infants;
@@ -232,7 +286,7 @@ export class RsvpService {
     ]);
     const titles = new Map(ceremonies.map((c) => [c.id, c.title]));
     return toCsv(
-      ['guest_name', 'phone', 'cohort', 'ref_lead', 'status', 'adults', 'children', 'infants', 'ceremonies', 'dietary', 'allergies', 'arrival_mode', 'arrival_details', 'arrival_at', 'accommodation', 'check_in', 'check_out', 'shuttle', 'note', 'updated_at'],
+      ['guest_name', 'phone', 'cohort', 'ref_lead', 'status', 'adults', 'children', 'infants', 'ceremonies', 'dietary', 'food_preference', 'allergies', 'arrival_mode', 'arrival_details', 'arrival_at', 'accommodation', 'rooms', 'accommodation_guests', 'check_in', 'check_out', 'shuttle', 'note', 'updated_at'],
       rows.map((r) => [
         r.invitation.guestName,
         r.invitation.phone,
@@ -244,11 +298,14 @@ export class RsvpService {
         r.infants,
         r.attendingCeremonyIds.map((id) => titles.get(id)).join('|'),
         r.dietary.join('|'),
+        r.foodPreference,
         r.allergies,
         r.arrivalMode,
         r.arrivalDetails,
         r.arrivalAt,
         r.needsAccommodation,
+        r.accommodationRooms,
+        r.accommodationGuests,
         r.checkInDate?.toISOString().slice(0, 10),
         r.checkOutDate?.toISOString().slice(0, 10),
         r.needsShuttle,
@@ -278,6 +335,15 @@ export class RsvpService {
       checkOutDate: r.checkOutDate,
       needsShuttle: r.needsShuttle,
       note: r.note,
+      accommodationRooms: r.accommodationRooms || 0,
+      accommodationGuests: r.accommodationGuests || 0,
+      foodPreference: r.foodPreference ?? null,
+      ceremonyResponses: (r.ceremonyResponses ?? []).map((row) => ({
+        ceremonyId: idString(row.ceremonyId),
+        status: row.status,
+        adults: row.adults,
+        children: row.children,
+      })),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

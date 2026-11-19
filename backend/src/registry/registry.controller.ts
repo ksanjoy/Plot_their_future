@@ -8,17 +8,31 @@ import { toCsv } from '../common/csv.js';
 import { SLUG_REGEX } from '../common/utils/format.js';
 import { RegistryService } from './registry.service.js';
 
-const lockSchema = z.object({
-  slug: z.string().regex(SLUG_REGEX),
-  roomKey: z.string().min(1).max(40),
-  units: z.number().int().min(1).max(500),
-  donorName: z.string().trim().max(80).optional(),
-  relationship: z.string().trim().max(80).optional(),
-  blessing: z.string().trim().max(500).optional(),
-  anonymous: z.boolean().optional(),
-  tableNumber: z.string().trim().max(20).optional(),
-  refLead: z.string().trim().max(40).optional(),
-});
+const lockSchema = z
+  .object({
+    slug: z.string().regex(SLUG_REGEX),
+    roomKey: z.string().min(1).max(40),
+    units: z.number().int().min(1).max(5000).optional(),
+    mode: z.enum(['SQFT', 'BRICK', 'AMOUNT']).optional(),
+    amountPaise: z.number().int().min(1).max(100_000_000_00).optional(),
+    indexes: z.array(z.number().int().min(0).max(20_000)).max(500).optional(),
+    donorName: z.string().trim().max(80).optional(),
+    relationship: z.string().trim().max(80).optional(),
+    blessing: z.string().trim().max(500).optional(),
+    anonymous: z.boolean().optional(),
+    hideAmount: z.boolean().optional(),
+    photoKey: z.string().trim().max(300).optional(),
+    tableNumber: z.string().trim().max(20).optional(),
+    refLead: z.string().trim().max(40).optional(),
+  })
+  .refine((value) => (value.mode ?? 'SQFT') === 'AMOUNT' || Boolean(value.units) || Boolean(value.indexes?.length), {
+    path: ['units'],
+    message: 'Choose square feet, bricks, or an amount',
+  })
+  .refine((value) => value.mode !== 'AMOUNT' || Boolean(value.amountPaise), {
+    path: ['amountPaise'],
+    message: 'Enter an amount',
+  });
 
 const statusQuery = z.object({
   status: z.enum(['PENDING', 'SUCCESS', 'FAILED', 'EXPIRED', 'CANCELLED', 'REFUND_REQUIRED']).optional(),
@@ -59,8 +73,8 @@ export class RegistryController {
 
   @Get('weddings/:slug/donor-wall')
   async donorWall(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
-    const { wedding } = await this.access.resolve(user, slug);
-    return this.registry.donorWall(wedding);
+    const access = await this.access.resolve(user, slug);
+    return this.registry.donorWall(access.wedding, 50, 'NAMES_AND_BLESSINGS', this.access.isStaff(access));
   }
 
   @Get('weddings/:slug/contributions/mine')

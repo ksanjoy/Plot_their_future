@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectEnv, type Env } from '../config/config.module.js';
-import { NotificationLogModel } from '../models/schemas.js';
+import { DeviceTokenModel, InAppNotificationModel, NotificationLogModel } from '../models/schemas.js';
 import { SmsService } from './sms.service.js';
 import { WhatsAppService, type SendResult, type TemplateMessage } from './whatsapp.service.js';
 
@@ -109,6 +109,51 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * In-app notice plus WhatsApp (and push when a device token and FCM key exist).
+   * Callers pass opt-out already applied; this does not block OTP or receipts.
+   */
+  async sendNotice(input: { phone?: string | null; userId?: string | null; template: string; title: string; body: string }) {
+    if (input.userId) {
+      await InAppNotificationModel.create({ userId: input.userId, title: input.title, body: input.body, kind: input.template });
+      await this.push(input.userId, input.title, input.body);
+    }
+    if (!input.phone) return;
+    try {
+      await this.sendWhatsApp({
+        to: input.phone,
+        template: input.template,
+        params: [input.title, input.body.slice(0, 900)],
+        preview: `${input.title}\n${input.body}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Notice ${input.template} to ${input.phone} failed: ${(err as Error).message}`);
+    }
+  }
+
+  private async push(userId: string, title: string, body: string) {
+    const tokens = await DeviceTokenModel.find({ userId }).select('token');
+    const key = process.env.FCM_SERVER_KEY?.trim();
+    if (!tokens.length || !key) {
+      await this.log('push', userId, 'push', { title }, 'SKIPPED', undefined, key ? 'no device token' : 'FCM not configured', userId);
+      return;
+    }
+    for (const row of tokens) {
+      try {
+        const res = await fetch('https://fcm.googleapis.com/fcm/send', {
+          method: 'POST',
+          headers: { Authorization: `key=${key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: row.token, notification: { title, body: body.slice(0, 240) } }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) throw new Error(`FCM ${res.status}`);
+        await this.log('push', userId, 'push', { title }, 'SENT', undefined, undefined, userId);
+      } catch (err) {
+        await this.log('push', userId, 'push', { title }, 'FAILED', undefined, (err as Error).message, userId);
+      }
+    }
+  }
+
   private relativeToWeb(link: string) {
     const base = this.env.WEB_PUBLIC_URL.replace(/\/$/, '') + '/';
     return link.startsWith(base) ? link.slice(base.length) : link;
@@ -118,10 +163,10 @@ export class NotificationsService {
     const payload = { params: msg.params, preview: msg.preview, document: msg.document ?? null };
     try {
       const res = await this.whatsapp.sendTemplate(msg);
-      await this.log('whatsapp', msg.to, msg.template, payload, 'SENT', res.providerMessageId);
+      await this.log('whatsapp', msg.to, msg.template, payload, 'SENT', res.providerMessageId, undefined, undefined);
       return res;
     } catch (err) {
-      await this.log('whatsapp', msg.to, msg.template, payload, 'FAILED', undefined, (err as Error).message);
+      await this.log('whatsapp', msg.to, msg.template, payload, 'FAILED', undefined, (err as Error).message, undefined);
       throw err;
     }
   }
@@ -131,14 +176,16 @@ export class NotificationsService {
     recipient: string,
     template: string,
     payload: object,
-    status: 'SENT' | 'FAILED',
+    status: 'SENT' | 'FAILED' | 'SKIPPED',
     providerMessageId?: string,
     error?: string,
+    userId?: string | null,
   ) {
     const safePayload = template === this.env.WHATSAPP_TEMPLATE_OTP ? { redacted: true } : payload;
     await NotificationLogModel.create({
       channel,
       recipient,
+      userId: userId ?? null,
       template,
       payload: safePayload,
       status,

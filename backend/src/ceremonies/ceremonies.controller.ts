@@ -17,7 +17,8 @@ const ceremonyBase = z.object({
     venueAddress: z.string().trim().max(300).nullish(),
     venueMapsUrl: url,
     streamUrl: url,
-    dressCode: z.string().trim().max(40).nullish(),
+    dressCode: z.string().trim().max(80).nullish(),
+    coverImageUrl: z.string().trim().max(500).nullish(),
     sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 const ceremonySchema = ceremonyBase.refine((c) => !c.endsAt || c.endsAt > c.startsAt, {

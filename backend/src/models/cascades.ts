@@ -1,7 +1,9 @@
 import type { ClientSession } from 'mongoose';
 import { oid } from '../database/helpers.js';
 import {
+  ApprovalModel,
   BlessingModel,
+  BrickAllocationModel,
   CeremonyModel,
   ContributionModel,
   DispatchMessageModel,
@@ -62,6 +64,8 @@ export async function deleteWeddingCascade(weddingId: string, session?: ClientSe
   await InvitationCeremonyModel.deleteMany({ invitationId: { $in: invitationIds } }, opt);
   await RsvpModel.deleteMany({ weddingId: id }, opt);
   await InvitationModel.deleteMany({ weddingId: id }, opt);
+  await BrickAllocationModel.deleteMany({ weddingId: id }, opt);
+  await ApprovalModel.deleteMany({ weddingId: id }, opt);
   await FloorTileModel.deleteMany({ weddingId: id }, opt);
   await LedgerEntryModel.deleteMany({ weddingId: id }, opt);
   await ContributionModel.deleteMany({ weddingId: id }, opt);

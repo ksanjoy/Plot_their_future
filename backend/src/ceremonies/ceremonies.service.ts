@@ -17,6 +17,7 @@ export interface CeremonyInput {
   venueMapsUrl?: string | null;
   streamUrl?: string | null;
   dressCode?: string | null;
+  coverImageUrl?: string | null;
   sortOrder?: number;
 }
 
@@ -101,6 +102,7 @@ export class CeremoniesService {
     const invitations = await InvitationModel.find({ _id: { $in: attending.map((row) => row.invitationId) } });
     let sent = 0;
     for (const inv of invitations) {
+      if (inv.messageOptOut) continue;
       try {
         await this.notifications.sendReminder({
           phone: inv.phone,

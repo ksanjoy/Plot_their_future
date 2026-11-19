@@ -76,7 +76,7 @@ export class WeddingsController {
   async upload(
     @CurrentUser() user: AuthUser,
     @Param('slug') slug: string,
-    @Param('kind', { schema: z.enum(['cover', 'video']) }) kind: 'cover' | 'video',
+    @Param('kind', { schema: z.enum(['cover', 'video', 'card']) }) kind: 'cover' | 'video' | 'card',
     @UploadedFile() file?: UploadedFileData,
   ) {
     if (!file) throw new BadRequestException('Attach a file in the "file" field');
