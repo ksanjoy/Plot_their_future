@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Gift, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -46,22 +46,31 @@ export function GiftSheet({
   const [relationship, setRelationship] = useState("");
   const [blessing, setBlessing] = useState("");
   const [anonymous, setAnonymous] = useState(false);
+  const [hideAmount, setHideAmount] = useState(false);
+  const [mode, setMode] = useState<"SQFT" | "BRICK" | "AMOUNT">("SQFT");
+  const [rupees, setRupees] = useState("");
+  const disclaimer = useQuery({ queryKey: ["public-content"], queryFn: () => endpoints.content(), staleTime: 60_000 });
 
   const room = registry.rooms.find((r) => r.key === roomKey);
+  const brickPrice = registry.pricePerBrickPaise ?? Math.round(registry.ratePerSftPaise / (registry.brickRatio || 10));
   const selectedUnits = custom ? Number.parseInt(custom, 10) || 0 : units;
-  const amount = selectedUnits * registry.ratePerSftPaise;
-  const overRoom = room ? selectedUnits > room.openSft : true;
+  const amount =
+    mode === "AMOUNT" ? Math.floor(Number(rupees) || 0) * 100 : mode === "BRICK" ? selectedUnits * brickPrice : selectedUnits * registry.ratePerSftPaise;
+  const overRoom = mode === "SQFT" && room ? selectedUnits > room.openSft : false;
 
   const lock = useMutation({
     mutationFn: () =>
       endpoints.lockTiles({
         slug,
         roomKey,
-        units: selectedUnits,
+        mode,
+        units: mode === "AMOUNT" ? undefined : selectedUnits,
+        amountPaise: mode === "AMOUNT" ? amount : undefined,
         donorName: donorName.trim() || undefined,
         relationship: relationship || undefined,
         blessing: blessing.trim() || undefined,
         anonymous,
+        hideAmount,
         tableNumber: tableNumber || undefined,
         refLead: refLead || undefined,
       }),
@@ -106,7 +115,19 @@ export function GiftSheet({
           </div>
 
           <div>
-            <span className="label">2. How many square feet?</span>
+            <span className="label">2. Square feet, bricks, or an amount</span>
+            <div className="mb-2 flex gap-2">
+              {(["SQFT", "BRICK", "AMOUNT"] as const).map((item) => (
+                <button key={item} type="button" className={`chip ${mode === item ? "chip-active" : ""}`} onClick={() => setMode(item)}>
+                  {item === "SQFT" ? "Sq.ft." : item === "BRICK" ? "Bricks" : "Amount"}
+                </button>
+              ))}
+            </div>
+            {mode === "AMOUNT" ? (
+              <input className="input !w-40" type="number" min={1} placeholder="Rupees" value={rupees} onChange={(e) => setRupees(e.target.value)} aria-label="Gift amount in rupees" />
+            ) : null}
+            {mode !== "AMOUNT" && (
+            <>
             <div className="flex flex-wrap gap-2">
               {registry.presetTiers.map((t) => (
                 <button
@@ -118,7 +139,7 @@ export function GiftSheet({
                   }}
                   className={`chip !px-4 !py-2 !text-sm ${!custom && units === t ? "chip-active" : ""}`}
                 >
-                  {t} sq.ft. • {formatInr(t * registry.ratePerSftPaise)}
+                  {t} {mode === "BRICK" ? "bricks" : "sq.ft."} • {formatInr(mode === "BRICK" ? t * brickPrice : t * registry.ratePerSftPaise)}
                 </button>
               ))}
               <input
@@ -133,6 +154,8 @@ export function GiftSheet({
               />
             </div>
             {overRoom && room && <p className="mt-2 text-xs text-maroon">Only {room.openSft} sq.ft. are still open in the {room.name}.</p>}
+            </>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -155,6 +178,10 @@ export function GiftSheet({
             <input type="checkbox" className="h-4 w-4 accent-maroon" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} />
             Gift anonymously (shown as &ldquo;A Well-Wisher&rdquo;)
           </label>
+          <label className="flex items-center gap-3 text-sm">
+            <input type="checkbox" className="h-4 w-4 accent-maroon" checked={hideAmount} onChange={(e) => setHideAmount(e.target.checked)} />
+            Hide the amount from other guests. The couple can still see it.
+          </label>
 
           <div className="maroon-gradient flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 text-white">
             <div>
@@ -164,13 +191,15 @@ export function GiftSheet({
                 {selectedUnits || 0} sq.ft. in the {room?.name ?? "—"} • reserved for {Math.round(registry.holdTtlSec / 60)} minutes while you pay
               </p>
             </div>
-            <button className="btn-gold" disabled={lock.isPending || !room || selectedUnits < 1 || overRoom}>
+            <button className="btn-gold" disabled={lock.isPending || !room || overRoom || (mode === "AMOUNT" ? amount < 100 : selectedUnits < 1)}>
               <Gift size={16} /> {lock.isPending ? "Reserving…" : "Reserve & pay"}
             </button>
           </div>
           {lock.isError && <p className="text-sm text-maroon">{errorMessage(lock.error)}</p>}
-          <p className="flex items-center gap-1.5 text-xs text-muted">
-            <ShieldCheck size={14} className="text-emerald-700" /> Paid into RBI tripartite escrow • Tax-exempt marriage gift under Sec 56(2)(x)
+          <p className="whitespace-pre-line rounded-xl bg-ivory p-3 text-xs text-muted">
+            <ShieldCheck size={14} className="mr-1 inline text-emerald-700" />
+            {disclaimer.data?.disclaimer ??
+              "Gifting is completely voluntary. A square foot or brick is a symbolic contribution toward the couple's home down payment, not ownership of property."}
           </p>
         </form>
       )}

@@ -40,7 +40,10 @@ class _GiftForm extends ConsumerStatefulWidget {
 class _GiftFormState extends ConsumerState<_GiftForm> {
   late String? _roomKey;
   late int _units;
+  String _mode = 'SQFT';
+  bool _hideAmount = false;
   final _custom = TextEditingController();
+  final _rupees = TextEditingController();
   late final TextEditingController _name;
   final _blessing = TextEditingController();
   String? _relationship;
@@ -61,12 +64,20 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
   @override
   void dispose() {
     _custom.dispose();
+    _rupees.dispose();
     _name.dispose();
     _blessing.dispose();
     super.dispose();
   }
 
-  int get _selectedUnits => _custom.text.isNotEmpty ? (int.tryParse(_custom.text) ?? 0) : _units;
+  int get _selectedUnits => _mode == 'AMOUNT' ? 0 : (_custom.text.isNotEmpty ? (int.tryParse(_custom.text) ?? 0) : _units);
+
+  int get _amountPaise {
+    final summary = widget.registry.summary;
+    if (_mode == 'AMOUNT') return (int.tryParse(_rupees.text) ?? 0) * 100;
+    if (_mode == 'BRICK') return _selectedUnits * summary.brickPrice;
+    return _selectedUnits * summary.ratePerSftPaise;
+  }
 
   Future<void> _submit() async {
     final roomKey = _roomKey;
@@ -80,6 +91,9 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
             slug: widget.site.wedding.slug,
             roomKey: roomKey,
             units: _selectedUnits,
+            mode: _mode,
+            amountPaise: _mode == 'AMOUNT' ? _amountPaise : null,
+            hideAmount: _hideAmount,
             donorName: _name.text.trim(),
             relationship: _relationship,
             blessing: _blessing.text.trim(),
@@ -108,7 +122,8 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
     final rate = reg.summary.ratePerSftPaise;
     final room = reg.rooms.where((r) => r.key == _roomKey).firstOrNull;
     final units = _selectedUnits;
-    final over = room == null || units > room.openSft;
+    final capacity = _mode == 'BRICK' ? (room?.openSft ?? 0) * reg.summary.brickRatio : (room?.openSft ?? 0);
+    final over = _mode == 'AMOUNT' ? _amountPaise < 100 : (room == null || units > capacity || units < 1);
     final label = GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMuted, letterSpacing: 0.8);
 
     if (reg.rooms.every((r) => r.openSft <= 0)) {
@@ -137,27 +152,46 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
             ),
         ]),
         const SizedBox(height: 16),
-        Text('2. HOW MANY SQUARE FEET?', style: label),
+        Text('2. SQUARE FEET, BRICKS, OR AN AMOUNT', style: label),
         const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final t in reg.summary.presetTiers)
-            ChoiceChip(
-              label: Text('$t sq.ft. • ${Formatters.inr(t * rate)}'),
-              selected: _custom.text.isEmpty && _units == t,
-              selectedColor: AppTheme.lightGold,
-              onSelected: (_) => setState(() {
-                _units = t;
-                _custom.clear();
-              }),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _custom,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Or enter custom sq.ft.'),
-          onChanged: (_) => setState(() {}),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'SQFT', label: Text('Sq.ft.')),
+            ButtonSegment(value: 'BRICK', label: Text('Bricks')),
+            ButtonSegment(value: 'AMOUNT', label: Text('Amount')),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (s) => setState(() => _mode = s.first),
         ),
+        const SizedBox(height: 8),
+        if (_mode == 'AMOUNT')
+          TextField(
+            controller: _rupees,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Amount in rupees'),
+            onChanged: (_) => setState(() {}),
+          )
+        else ...[
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final t in reg.summary.presetTiers)
+              ChoiceChip(
+                label: Text(_mode == 'BRICK' ? '$t bricks • ${Formatters.inr(t * reg.summary.brickPrice)}' : '$t sq.ft. • ${Formatters.inr(t * rate)}'),
+                selected: _custom.text.isEmpty && _units == t,
+                selectedColor: AppTheme.lightGold,
+                onSelected: (_) => setState(() {
+                  _units = t;
+                  _custom.clear();
+                }),
+              ),
+          ]),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _custom,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(labelText: _mode == 'BRICK' ? 'Or enter a brick count' : 'Or enter custom sq.ft.'),
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
         if (over && room != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('Only ${room.openSft} sq.ft. are still open in the ${room.name}.', style: GoogleFonts.outfit(color: AppTheme.crimsonMaroon, fontSize: 12))),
         const SizedBox(height: 16),
         TextField(controller: _name, maxLength: 80, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Your name on the gift', counterText: '')),
@@ -178,6 +212,14 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
           value: _anonymous,
           onChanged: (v) => setState(() => _anonymous = v),
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          activeThumbColor: AppTheme.crimsonMaroon,
+          title: const Text('Hide the amount from other guests'),
+          subtitle: const Text('The couple can still see it'),
+          value: _hideAmount,
+          onChanged: (v) => setState(() => _hideAmount = v),
+        ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(16),
@@ -186,13 +228,13 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('YOUR GIFT', style: GoogleFonts.outfit(fontSize: 11, letterSpacing: 2, color: AppTheme.lightGold)),
-                Text(Formatters.inr(units * rate), style: GoogleFonts.cinzel(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                Text('$units sq.ft. • held ${(reg.summary.holdTtlSec / 60).round()} min while you pay', style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70)),
+                Text(Formatters.inr(_amountPaise), style: GoogleFonts.cinzel(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text('${_mode == 'AMOUNT' ? 'Custom amount' : _mode == 'BRICK' ? '$units bricks' : '$units sq.ft.'} • held ${(reg.summary.holdTtlSec / 60).round()} min while you pay', style: GoogleFonts.outfit(fontSize: 11, color: Colors.white70)),
               ]),
             ),
             ElevatedButton(
               style: primaryButton(gold: true),
-              onPressed: _busy || over || units < 1 || (!_anonymous && _name.text.trim().isEmpty) ? null : _submit,
+              onPressed: _busy || over || (!_anonymous && _name.text.trim().isEmpty) ? null : _submit,
               child: Text(_busy ? 'Reserving…' : 'Reserve & pay'),
             ),
           ]),
@@ -202,7 +244,7 @@ class _GiftFormState extends ConsumerState<_GiftForm> {
         Row(children: [
           const Icon(Icons.verified_user, size: 14, color: AppTheme.greenVerified),
           const SizedBox(width: 6),
-          Expanded(child: Text('Paid into RBI tripartite escrow • Sec 56(2)(x) marriage-gift exemption', style: GoogleFonts.outfit(fontSize: 11, color: AppTheme.textMuted))),
+          Expanded(child: Text('Gifting is voluntary. A square foot or brick is a symbolic contribution toward the down payment, not ownership of the home.', style: GoogleFonts.outfit(fontSize: 11, color: AppTheme.textMuted))),
         ]),
       ],
     );

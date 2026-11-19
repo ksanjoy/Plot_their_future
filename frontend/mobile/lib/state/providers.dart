@@ -32,6 +32,15 @@ class AuthNotifier extends AsyncNotifier<Session?> {
     state = AsyncData(session);
   }
 
+  Future<void> loginPassword(String phone, String password) async {
+    state = AsyncData(await _repo.loginPassword(phone, password));
+  }
+
+  Future<void> completeProfile({required String name, required String occupation, required String password}) async {
+    await _repo.completeProfile(name: name, occupation: occupation, password: password);
+    await reload();
+  }
+
   Future<void> reload() async {
     state = AsyncData(await _repo.me());
   }

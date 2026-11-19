@@ -213,9 +213,58 @@ function MembersCard({ slug, canManage }: { slug: string; canManage: boolean }) 
   );
 }
 
+function LinkCard({ slug, wedding }: { slug: string; wedding: Wedding }) {
+  const toast = useToast();
+  const [visibility, setVisibility] = useState(wedding.linkVisibility ?? "PUBLIC");
+  const [hideAmounts, setHideAmounts] = useState(Boolean(wedding.hideAmountsFromGuests));
+  const [legalName, setLegalName] = useState("");
+  const [idLast4, setIdLast4] = useState("");
+  const save = useMutation({
+    mutationFn: () => endpoints.updateWedding(slug, { linkVisibility: visibility, hideAmountsFromGuests: hideAmounts }),
+    onSuccess: () => toast("Link settings saved"),
+  });
+  const nudge = useMutation({
+    mutationFn: () => endpoints.sendFollowUps(slug),
+    onSuccess: (res) => toast(`Sent ${res.sent} of ${res.eligible} reminders`),
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+  const kyc = useMutation({
+    mutationFn: () => endpoints.submitKyc(slug, { legalName, idLast4 }),
+    onSuccess: () => toast("KYC submitted for payout review"),
+    onError: (e) => toast(errorMessage(e), "error"),
+  });
+  return (
+    <div className="card space-y-4 p-5">
+      <h3 className="font-serif text-lg font-bold text-maroon">Link, reminders and payout identity</h3>
+      <p className="text-xs text-muted">Status: {wedding.approvalStatus ?? "APPROVED"} {wedding.approvalNote ? `• ${wedding.approvalNote}` : ""} • KYC {wedding.kycStatus ?? "NOT_REQUIRED"}</p>
+      <Field label="Wedding link">
+        <select className="input" value={visibility} onChange={(e) => setVisibility(e.target.value as NonNullable<Wedding["linkVisibility"]>)}>
+          <option value="PUBLIC">Public link</option>
+          <option value="PRIVATE">Private (invitees only, hidden from the feed)</option>
+          <option value="PAUSED">Paused</option>
+        </select>
+      </Field>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={hideAmounts} onChange={(e) => setHideAmounts(e.target.checked)} />
+        Hide gift amounts from other guests
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-primary !py-2" onClick={() => save.mutate()} disabled={save.isPending}>Save link</button>
+        <button className="btn-ghost !py-2" onClick={() => nudge.mutate()} disabled={nudge.isPending}>Remind guests who have not replied</button>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Legal name for payout"><input className="input" value={legalName} onChange={(e) => setLegalName(e.target.value)} /></Field>
+        <Field label="ID last 4"><input className="input" value={idLast4} onChange={(e) => setIdLast4(e.target.value)} maxLength={4} /></Field>
+      </div>
+      <button className="btn-ghost !py-2" onClick={() => kyc.mutate()} disabled={legalName.length < 2 || idLast4.length !== 4}>Submit identity for payouts</button>
+    </div>
+  );
+}
+
 export function SettingsTab({ slug, wedding, role }: TabProps) {
   return (
     <div className="space-y-6">
+      <LinkCard slug={slug} wedding={wedding} />
       <DetailsCard key={wedding.id} slug={slug} wedding={wedding} />
       <MediaCard slug={slug} wedding={wedding} />
       <RoomsCard slug={slug} />

@@ -28,9 +28,9 @@ function TileGrid({ room, compact }: { room: RoomState; compact?: boolean }) {
         return (
           <span
             key={i}
-            title={c === "F" ? `Gifted${donor ? ` by ${donor}` : ""}` : c === "H" ? "Being gifted right now" : "Open"}
+            title={c === "F" ? `Gifted${donor ? ` by ${donor}` : ""}` : c === "H" ? "Being gifted right now" : c === "P" ? "Partly gifted in bricks" : "Open"}
             className={`aspect-square rounded-[2px] ${
-              c === "F" ? "gold-gradient" : c === "H" ? "tile-held bg-maroon/70" : "border border-line bg-white"
+              c === "F" ? "gold-gradient" : c === "H" ? "tile-held bg-maroon/70" : c === "P" ? "bg-gold/45" : "border border-line bg-white"
             }`}
           />
         );

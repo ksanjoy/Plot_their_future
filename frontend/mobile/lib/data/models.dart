@@ -15,16 +15,20 @@ class User {
   final String phone;
   final String? name;
   final String? email;
+  final String? occupation;
   final bool isPlatformAdmin;
+  final bool profileComplete;
 
-  const User({required this.id, required this.phone, this.name, this.email, this.isPlatformAdmin = false});
+  const User({required this.id, required this.phone, this.name, this.email, this.occupation, this.isPlatformAdmin = false, this.profileComplete = true});
 
   factory User.fromJson(Json j) => User(
         id: j['id'] as String,
         phone: j['phone'] as String,
         name: j['name'] as String?,
         email: j['email'] as String?,
+        occupation: j['occupation'] as String?,
         isPlatformAdmin: j['isPlatformAdmin'] == true,
+        profileComplete: j['profileComplete'] != false,
       );
 }
 
@@ -35,8 +39,9 @@ class AccessibleWedding {
   final DateTime? weddingDate;
   final String? coverPhotoUrl;
   final String role;
+  final String? approvalStatus;
 
-  const AccessibleWedding({required this.slug, required this.brideName, required this.groomName, this.weddingDate, this.coverPhotoUrl, required this.role});
+  const AccessibleWedding({required this.slug, required this.brideName, required this.groomName, this.weddingDate, this.coverPhotoUrl, required this.role, this.approvalStatus});
 
   factory AccessibleWedding.fromJson(Json j) => AccessibleWedding(
         slug: j['slug'] as String,
@@ -45,6 +50,7 @@ class AccessibleWedding {
         weddingDate: _date(j['weddingDate']),
         coverPhotoUrl: j['coverPhotoUrl'] as String?,
         role: j['role'] as String,
+        approvalStatus: j['approvalStatus'] as String?,
       );
 
   String get couple => '$brideName & $groomName';
@@ -253,6 +259,8 @@ class RegistrySummary {
   final int targetPaise;
   final List<int> presetTiers;
   final int holdTtlSec;
+  final int brickRatio;
+  final int pricePerBrickPaise;
 
   const RegistrySummary({
     required this.totalSft,
@@ -264,6 +272,8 @@ class RegistrySummary {
     required this.targetPaise,
     required this.presetTiers,
     required this.holdTtlSec,
+    this.brickRatio = 10,
+    this.pricePerBrickPaise = 0,
   });
 
   factory RegistrySummary.fromJson(Json j) => RegistrySummary(
@@ -276,7 +286,11 @@ class RegistrySummary {
         targetPaise: _int(j['targetPaise']),
         presetTiers: ((j['presetTiers'] as List?) ?? const []).map(_int).toList(),
         holdTtlSec: _int(j['holdTtlSec']),
+        brickRatio: _int(j['brickRatio']) == 0 ? 10 : _int(j['brickRatio']),
+        pricePerBrickPaise: _int(j['pricePerBrickPaise']),
       );
+
+  int get brickPrice => pricePerBrickPaise > 0 ? pricePerBrickPaise : (ratePerSftPaise / brickRatio).round();
 }
 
 class Microsite {
@@ -599,4 +613,5 @@ const dietaryLabels = {
   'VEGAN': 'Vegan',
   'SATVIK': 'Satvik',
   'GLUTEN_FREE': 'Gluten-free',
+  'OTHER': 'Other',
 };

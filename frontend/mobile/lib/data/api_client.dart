@@ -64,6 +64,10 @@ class TokenStore {
     await _storage.delete(key: _access);
     await _storage.delete(key: _refresh);
   }
+
+  Future<bool> introSeen() async => (await _storage.read(key: 'ptf.intro')) == '1';
+
+  Future<void> markIntroSeen() => _storage.write(key: 'ptf.intro', value: '1');
 }
 
 /// Dio client that attaches the bearer token and transparently rotates the

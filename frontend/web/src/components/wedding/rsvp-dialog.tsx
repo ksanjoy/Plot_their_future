@@ -48,6 +48,14 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
     note: r?.note ?? "",
     guestName: data.invitation.guestName,
     email: data.invitation.email,
+    occupation: "",
+    foodPreference: r?.foodPreference ?? null,
+    accommodationRooms: r?.accommodationRooms ?? 1,
+    accommodationGuests: r?.accommodationGuests ?? 1,
+  });
+  const [ceremonyStatus, setCeremonyStatus] = useState<Record<string, RsvpStatus>>(() => {
+    const saved = Object.fromEntries((r?.ceremonyResponses ?? []).map((row) => [row.ceremonyId, row.status]));
+    return Object.fromEntries(data.invitedCeremonies.map((c) => [c.id, saved[c.id] ?? (form.attendingCeremonyIds.includes(c.id) ? "ATTENDING" : "DECLINED")]));
   });
   const set = <K extends keyof RsvpInput>(k: K, v: RsvpInput[K]) => setForm((f) => ({ ...f, [k]: v }));
   const toggle = (k: "attendingCeremonyIds" | "dietary", v: string) =>
@@ -61,6 +69,20 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
         arrivalDetails: form.arrivalDetails || null,
         note: form.note || null,
         email: form.email || null,
+        occupation: form.occupation || undefined,
+        foodPreference: form.status === "DECLINED" ? null : form.foodPreference || null,
+        accommodationRooms: form.status !== "DECLINED" && form.needsAccommodation ? form.accommodationRooms ?? 0 : 0,
+        accommodationGuests: form.status !== "DECLINED" && form.needsAccommodation ? form.accommodationGuests ?? 0 : 0,
+        attendingCeremonyIds: form.status === "DECLINED" ? [] : Object.entries(ceremonyStatus).filter(([, status]) => status !== "DECLINED").map(([id]) => id),
+        ceremonyResponses:
+          form.status === "DECLINED"
+            ? []
+            : Object.entries(ceremonyStatus).map(([ceremonyId, status]) => ({
+                ceremonyId,
+                status,
+                adults: status === "DECLINED" ? 0 : form.adults,
+                children: status === "DECLINED" ? 0 : form.children,
+              })),
       }),
     onSuccess: () => {
       toast(form.status === "DECLINED" ? "Thank you for letting us know." : "RSVP confirmed! A WhatsApp confirmation is on its way.");
@@ -100,6 +122,9 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
         <Field label="Email (optional)">
           <input className="input" type="email" value={form.email ?? ""} onChange={(e) => set("email", e.target.value)} />
         </Field>
+        <Field label="Occupation">
+          <input className="input" value={form.occupation ?? ""} onChange={(e) => set("occupation", e.target.value)} maxLength={80} />
+        </Field>
       </div>
 
       {attending && (
@@ -117,15 +142,23 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
               <span className="label">Ceremonies you&apos;ll attend</span>
               <div className="space-y-2">
                 {data.invitedCeremonies.map((c) => (
-                  <label key={c.id} className="flex items-center gap-3 rounded-xl border border-line bg-white p-3 text-sm">
-                    <input type="checkbox" className="h-4 w-4 accent-maroon" checked={form.attendingCeremonyIds.includes(c.id)} onChange={() => toggle("attendingCeremonyIds", c.id)} />
+                  <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-white p-3 text-sm">
                     <span>
                       <span className="font-semibold">{c.title}</span>
                       <span className="block text-xs text-muted">
                         {formatDateTime(c.startsAt)} • {c.venueName}
                       </span>
                     </span>
-                  </label>
+                    <select
+                      className="input !w-36"
+                      value={ceremonyStatus[c.id] ?? "DECLINED"}
+                      onChange={(e) => setCeremonyStatus((current) => ({ ...current, [c.id]: e.target.value as RsvpStatus }))}
+                    >
+                      <option value="ATTENDING">Yes</option>
+                      <option value="MAYBE">Maybe</option>
+                      <option value="DECLINED">No</option>
+                    </select>
+                  </div>
                 ))}
               </div>
             </div>
@@ -140,6 +173,15 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
               ))}
             </div>
           </div>
+          <Field label="Food preference">
+            <select className="input" value={form.foodPreference ?? ""} onChange={(e) => set("foodPreference", e.target.value || null)}>
+              <option value="">Select…</option>
+              <option value="VEG">Veg</option>
+              <option value="NON_VEG">Non-veg</option>
+              <option value="JAIN">Jain</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </Field>
           <Field label="Allergies or special needs">
             <input className="input" value={form.allergies ?? ""} onChange={(e) => set("allergies", e.target.value)} maxLength={200} />
           </Field>
@@ -163,6 +205,8 @@ function RsvpForm({ slug, data, onDone }: { slug: string; data: MyRsvp; onDone: 
           </label>
           {form.needsAccommodation && (
             <div className="grid gap-3 sm:grid-cols-2">
+              <Counter label="Rooms" value={form.accommodationRooms ?? 1} min={1} max={20} onChange={(n) => set("accommodationRooms", n)} />
+              <Counter label="People staying" value={form.accommodationGuests ?? 1} min={1} max={40} onChange={(n) => set("accommodationGuests", n)} />
               <Field label="Check-in">
                 <input className="input" type="date" value={form.checkInDate ?? ""} onChange={(e) => set("checkInDate", e.target.value || null)} />
               </Field>

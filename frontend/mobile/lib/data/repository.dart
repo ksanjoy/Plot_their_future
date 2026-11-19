@@ -11,6 +11,38 @@ class Repository {
 
   Future<OtpRequest> requestOtp(String phone) async => OtpRequest.fromJson(await api.post<Json>('/auth/request-otp', data: {'phone': phone}, auth: false));
 
+  Future<Session> loginPassword(String phone, String password) async {
+    final j = await api.post<Json>('/auth/login', data: {'phone': phone, 'password': password}, auth: false);
+    await api.tokens.save(j['accessToken'] as String, j['refreshToken'] as String);
+    return Session.fromJson(j);
+  }
+
+  Future<void> completeProfile({required String name, required String occupation, required String password}) async {
+    await api.post<Json>('/auth/complete-profile', data: {'name': name, 'occupation': occupation, 'password': password});
+  }
+
+  Future<List<Json>> flats() async => (await api.get<List<dynamic>>('/flats')).map((e) => e as Json).toList();
+
+  Future<void> registerWedding(Json body) async {
+    await api.post<dynamic>('/weddings/registrations', data: body);
+  }
+
+  Future<List<({String title, String body})>> introScreens() async {
+    try {
+      final j = await api.get<Json>('/public/content', auth: false);
+      final screens = (j['intro'] as List?) ?? const [];
+      return screens.map((raw) {
+        final e = raw as Json;
+        return (title: e['title'] as String? ?? '', body: e['body'] as String? ?? '');
+      }).toList();
+    } catch (_) {
+      return const [
+        (title: 'The wedding gift that becomes their forever.', body: 'Loved ones contribute toward a couple\'s first home.'),
+        (title: 'Blessings come first.', body: 'Gifting is completely voluntary. Your presence is the greatest gift.'),
+      ];
+    }
+  }
+
   Future<Session> verifyOtp(String phone, String otp, {String? name}) async {
     final j = await api.post<Json>('/auth/verify-otp', data: {'phone': phone, 'otp': otp, if (name != null && name.isNotEmpty) 'name': name}, auth: false);
     await api.tokens.save(j['accessToken'] as String, j['refreshToken'] as String);
@@ -42,6 +74,9 @@ class Repository {
     required String slug,
     required String roomKey,
     required int units,
+    String mode = 'SQFT',
+    int? amountPaise,
+    bool hideAmount = false,
     String? donorName,
     String? relationship,
     String? blessing,
@@ -51,7 +86,10 @@ class Repository {
     final j = await api.post<Json>('/registry/lock-tile', data: {
       'slug': slug,
       'roomKey': roomKey,
-      'units': units,
+      'mode': mode,
+      if (mode != 'AMOUNT') 'units': units,
+      if (amountPaise != null) 'amountPaise': amountPaise,
+      'hideAmount': hideAmount,
       if (donorName != null && donorName.isNotEmpty) 'donorName': donorName,
       if (relationship != null && relationship.isNotEmpty) 'relationship': relationship,
       if (blessing != null && blessing.isNotEmpty) 'blessing': blessing,

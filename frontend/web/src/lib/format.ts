@@ -57,4 +57,5 @@ export const DIETARY_LABELS: Record<string, string> = {
   VEGAN: "Vegan",
   SATVIK: "Satvik",
   GLUTEN_FREE: "Gluten-free",
+  OTHER: "Other",
 };

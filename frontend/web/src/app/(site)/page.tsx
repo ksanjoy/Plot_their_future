@@ -1,6 +1,7 @@
 import { Gift, Home as HomeIcon, Lock, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { SignedInHome } from "@/components/signed-in-home";
 import { CelebrationFeed } from "./celebration-feed";
 
 const STEPS = [
@@ -54,6 +55,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <SignedInHome />
 
       <section className="mx-auto w-full max-w-6xl px-4 py-14">
         <div className="flex flex-wrap items-end justify-between gap-4">

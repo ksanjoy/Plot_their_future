@@ -17,10 +17,10 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { useToast } from "@/components/toast";
-import { Badge, EmptyState, ErrorState, errorMessage, PageLoader, ProgressBar, Spinner } from "@/components/ui";
+import { Badge, EmptyState, ErrorState, errorMessage, Modal, PageLoader, ProgressBar, Spinner } from "@/components/ui";
 import { BlessingForm, BlessingsGrid } from "@/components/wedding/blessings-wall";
 import { Countdown } from "@/components/wedding/countdown";
 import { FloorPlan } from "@/components/wedding/floor-plan";
@@ -65,12 +65,20 @@ function Microsite({ slug }: { slug: string }) {
   const toast = useToast();
   const { user } = useAuth();
   const [giftOpen, setGiftOpen] = useState(search.get("gift") === "1");
+  const [inviteGift, setInviteGift] = useState(false);
   const [giftRoom, setGiftRoom] = useState<string | null>(null);
   const [rsvpOpen, setRsvpOpen] = useState(false);
   const tableNumber = search.get("table");
   const refLead = search.get("ref_lead");
 
   const site = useQuery({ queryKey: ["microsite", slug], queryFn: () => endpoints.microsite(slug) });
+  const disclaimer = useQuery({ queryKey: ["public-content"], queryFn: () => endpoints.content(), staleTime: 300_000 });
+  useEffect(() => {
+    if (!site.isSuccess || search.get("gift") === "1") return;
+    const key = `ptf.gift-invite.${slug}`;
+    if (sessionStorage.getItem(key)) return;
+    setInviteGift(true);
+  }, [site.isSuccess, search, slug]);
   const enabled = site.isSuccess;
   const registry = useQuery({ queryKey: ["registry", slug], queryFn: () => endpoints.registry(slug), enabled });
   const wall = useQuery({ queryKey: ["donor-wall", slug], queryFn: () => endpoints.donorWall(slug), enabled });
@@ -374,6 +382,39 @@ function Microsite({ slug }: { slug: string }) {
         </section>
       </div>
 
+      <Modal
+        open={inviteGift && registryEnabled}
+        onClose={() => {
+          sessionStorage.setItem(`ptf.gift-invite.${slug}`, "1");
+          setInviteGift(false);
+        }}
+        title="A home, if you wish"
+      >
+        <p className="whitespace-pre-line text-sm text-muted">
+          {disclaimer.data?.disclaimer ?? "Gifting is completely voluntary. Your presence is the greatest gift."}
+        </p>
+        <div className="mt-4 flex gap-2">
+          <button
+            className="btn-primary"
+            onClick={() => {
+              sessionStorage.setItem(`ptf.gift-invite.${slug}`, "1");
+              setInviteGift(false);
+              openGift();
+            }}
+          >
+            Gift a square foot
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              sessionStorage.setItem(`ptf.gift-invite.${slug}`, "1");
+              setInviteGift(false);
+            }}
+          >
+            Not now
+          </button>
+        </div>
+      </Modal>
       {registry.data && giftOpen && (
         <GiftSheet
           key={giftRoom ?? "any"}

@@ -23,6 +23,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phone = TextEditingController();
   final _otp = TextEditingController();
   final _name = TextEditingController();
+  final _password = TextEditingController();
+  bool _usePassword = false;
   OtpRequest? _request;
   bool _busy = false;
   String? _error;
@@ -35,6 +37,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _phone.dispose();
     _otp.dispose();
     _name.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -59,6 +62,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _startCooldown(req.resendAfterSec);
     } catch (e) {
       setState(() => _error = errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _passwordLogin() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authProvider.notifier).loginPassword(_phone.text.trim(), _password.text);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -113,15 +130,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         style: GoogleFonts.outfit(fontSize: 12, color: AppTheme.textMuted),
                       ),
                       const SizedBox(height: 16),
-                      if (req == null)
+                      if (req == null) ...[
                         TextField(
                           controller: _phone,
                           keyboardType: TextInputType.phone,
                           autofillHints: const [AutofillHints.telephoneNumber],
                           decoration: const InputDecoration(labelText: 'Mobile number', prefixIcon: Icon(Icons.phone_android), hintText: '98480 12345'),
-                          onSubmitted: (_) => _sendOtp(),
-                        )
-                      else ...[
+                          onSubmitted: (_) => _usePassword ? _passwordLogin() : _sendOtp(),
+                        ),
+                        if (_usePassword) ...[
+                          const SizedBox(height: 10),
+                          TextField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Password'), onSubmitted: (_) => _passwordLogin()),
+                        ],
+                      ] else ...[
                         TextField(
                           controller: _otp,
                           keyboardType: TextInputType.number,
@@ -148,9 +169,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         style: primaryButton(),
-                        onPressed: _busy ? null : (req == null ? _sendOtp : _verify),
-                        child: Text(_busy ? 'Please wait…' : (req == null ? 'Send code' : 'Verify & continue')),
+                        onPressed: _busy ? null : (req == null ? (_usePassword ? _passwordLogin : _sendOtp) : _verify),
+                        child: Text(_busy ? 'Please wait…' : (req == null ? (_usePassword ? 'Sign in' : 'Send code') : 'Verify & continue')),
                       ),
+                      if (req == null)
+                        TextButton(onPressed: () => setState(() => _usePassword = !_usePassword), child: Text(_usePassword ? 'Use a one-time code instead' : 'Sign in with password')),
                       if (req != null)
                         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                           TextButton(onPressed: () => setState(() => _request = null), child: const Text('Change number')),

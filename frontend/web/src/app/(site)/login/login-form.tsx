@@ -24,8 +24,17 @@ export function LoginForm() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
   const [request, setRequest] = useState<OtpRequest | null>(null);
   const [cooldown, setCooldown] = useState(0);
+
+  const continueTo = (session: { user: { profileComplete?: boolean }; weddings: { slug: string }[] }) => {
+    const target = slug ?? preview.data?.wedding.slug;
+    const dest = next ?? (target ? `/w/${target}` : session.weddings.length === 1 ? `/w/${session.weddings[0].slug}` : "/");
+    if (!session.user.profileComplete) router.replace(`/welcome?next=${encodeURIComponent(dest)}`);
+    else router.replace(dest);
+  };
 
   const preview = useQuery({
     queryKey: ["invitation-preview", refToken],
@@ -34,7 +43,10 @@ export function LoginForm() {
   });
 
   useEffect(() => {
-    if (ready && user && !request) router.replace(next ?? "/");
+    if (ready && user && !request) {
+      if (user.profileComplete === false) router.replace(`/welcome?next=${encodeURIComponent(next ?? "/")}`);
+      else router.replace(next ?? "/");
+    }
   }, [ready, user, request, next, router]);
 
   useEffect(() => {
@@ -56,11 +68,15 @@ export function LoginForm() {
     mutationFn: () => endpoints.verifyOtp(request!.phone, otp, name),
     onSuccess: (session) => {
       signIn(session);
-      const target = slug ?? preview.data?.wedding.slug;
-      if (next) router.replace(next);
-      else if (target) router.replace(`/w/${target}`);
-      else if (session.weddings.length === 1) router.replace(`/w/${session.weddings[0].slug}`);
-      else router.replace("/");
+      continueTo(session);
+    },
+  });
+
+  const passwordLogin = useMutation({
+    mutationFn: () => endpoints.loginPassword(phone, password),
+    onSuccess: (session) => {
+      signIn(session);
+      continueTo(session);
     },
   });
 
@@ -85,7 +101,8 @@ export function LoginForm() {
             className="mt-6 space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              send.mutate();
+              if (usePassword) passwordLogin.mutate();
+              else send.mutate();
             }}
           >
             <Field label="Mobile number">
@@ -103,9 +120,29 @@ export function LoginForm() {
                 />
               </div>
             </Field>
+            {usePassword && (
+              <Field label="Password">
+                <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+              </Field>
+            )}
             {send.isError && <p className="text-sm text-maroon">{errorMessage(send.error)}</p>}
-            <button className="btn-primary w-full" disabled={send.isPending || phone.replace(/\D/g, "").length < 10}>
-              <MessageCircle size={16} /> {send.isPending ? "Sending…" : "Send code on WhatsApp"}
+            {passwordLogin.isError && <p className="text-sm text-maroon">{errorMessage(passwordLogin.error)}</p>}
+            {usePassword ? (
+              <button
+                type="button"
+                className="btn-primary w-full"
+                disabled={passwordLogin.isPending || password.length < 8}
+                onClick={() => passwordLogin.mutate()}
+              >
+                Sign in with password
+              </button>
+            ) : (
+              <button className="btn-primary w-full" disabled={send.isPending || phone.replace(/\D/g, "").length < 10}>
+                <MessageCircle size={16} /> {send.isPending ? "Sending…" : "Send code on WhatsApp"}
+              </button>
+            )}
+            <button type="button" className="w-full text-center text-sm text-maroon" onClick={() => setUsePassword((v) => !v)}>
+              {usePassword ? "Use a one-time code instead" : "Returning guest? Sign in with password"}
             </button>
           </form>
         ) : (

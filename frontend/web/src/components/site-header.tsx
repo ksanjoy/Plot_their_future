@@ -66,10 +66,13 @@ export function SiteHeader() {
                 </Link>
               )}
               {user.isPlatformAdmin && (
-                <Link href="/admin/compliance" className="btn-ghost !py-2">
-                  <ShieldCheck size={16} /> Compliance
+                <Link href="/admin/platform" className="btn-ghost !py-2">
+                  <ShieldCheck size={16} /> Platform
                 </Link>
               )}
+              <Link href="/profile" className="btn-ghost !py-2">
+                Profile
+              </Link>
               <button
                 className="btn-ghost !py-2"
                 onClick={async () => {
@@ -149,6 +152,10 @@ export function SiteFooter() {
           <ul className="mt-2 space-y-1">
             <li><Link href="/admin/new" className="hover:text-maroon">Create your wedding microsite</Link></li>
             <li><Link href="/admin" className="hover:text-maroon">Host console</Link></li>
+            <li><Link href="/register" className="hover:text-maroon">Register a marriage</Link></li>
+            <li><Link href="/terms" className="hover:text-maroon">Terms</Link></li>
+            <li><Link href="/privacy" className="hover:text-maroon">Privacy</Link></li>
+            <li><Link href="/help" className="hover:text-maroon">Help</Link></li>
           </ul>
           <p className="mt-4 text-xs">Marriage gifts are exempt under Sec 56(2)(x) of the Income Tax Act.</p>
         </div>

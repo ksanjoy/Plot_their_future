@@ -173,6 +173,7 @@ export function CheckoutView() {
                 </>
               )}
             </dl>
+            <CheckoutDisclaimer />
 
             {failure ? (
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
@@ -212,4 +213,13 @@ export function CheckoutView() {
   }
 
   return <div className="mx-auto w-full max-w-lg flex-1 px-4 py-12">{body}</div>;
+}
+
+function CheckoutDisclaimer() {
+  const q = useQuery({ queryKey: ["public-content"], queryFn: () => endpoints.content(), staleTime: 300_000 });
+  return (
+    <p className="whitespace-pre-line rounded-xl bg-ivory p-3 text-xs text-muted">
+      {q.data?.disclaimer ?? "Gifting is voluntary. A square foot or brick is a symbolic contribution toward the couple's down payment, not ownership of property."}
+    </p>
+  );
 }

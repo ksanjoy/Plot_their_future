@@ -23,6 +23,7 @@ class WeddingScreen extends ConsumerStatefulWidget {
 
 class _WeddingScreenState extends ConsumerState<WeddingScreen> with WidgetsBindingObserver {
   int _index = 0;
+  bool _prompted = false;
   LiveConnection? _live;
 
   String get slug => widget.slug;
@@ -74,6 +75,29 @@ class _WeddingScreenState extends ConsumerState<WeddingScreen> with WidgetsBindi
             : ErrorPanel(message: errorText(e), onRetry: () => ref.invalidate(micrositeProvider(slug))),
       ),
       data: (data) {
+        if (!_prompted && data.registryEnabled) {
+          _prompted = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('A home, if you wish'),
+                content: const Text('Gifting is completely voluntary. Your presence is the greatest gift. A square foot is a symbolic contribution toward the down payment, not property ownership.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Not now')),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      setState(() => _index = 1);
+                    },
+                    child: const Text('Gift a square foot'),
+                  ),
+                ],
+              ),
+            );
+          });
+        }
         final tabs = <({String label, IconData icon, Widget body})>[
           (label: 'Invitation', icon: Icons.mail_outline, body: InvitationTab(site: data)),
           if (data.registryEnabled) (label: 'Home gift', icon: Icons.architecture, body: RegistryTab(site: data)),

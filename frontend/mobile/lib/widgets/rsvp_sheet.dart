@@ -68,12 +68,17 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
   late int _children;
   late int _infants;
   late Set<String> _ceremonies;
+  late Map<String, String> _ceremonyStatus;
   late Set<String> _dietary;
+  String? _food;
+  int _rooms = 1;
+  int _people = 1;
   String? _arrivalMode;
   late bool _accommodation;
   late bool _shuttle;
   DateTime? _checkIn;
   DateTime? _checkOut;
+  late final TextEditingController _occupation;
   late final TextEditingController _name;
   late final TextEditingController _allergies;
   late final TextEditingController _arrivalDetails;
@@ -90,6 +95,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
     _children = r?.children ?? 0;
     _infants = r?.infants ?? 0;
     _ceremonies = {...(r?.attendingCeremonyIds ?? widget.data.invitedCeremonies.map((c) => c.id))};
+    _ceremonyStatus = {for (final c in widget.data.invitedCeremonies) c.id: _ceremonies.contains(c.id) ? 'ATTENDING' : 'DECLINED'};
     _dietary = {...?r?.dietary};
     _arrivalMode = r?.arrivalMode;
     _accommodation = r?.needsAccommodation ?? false;
@@ -97,6 +103,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
     _checkIn = r?.checkInDate;
     _checkOut = r?.checkOutDate;
     _name = TextEditingController(text: widget.data.guestName);
+    _occupation = TextEditingController();
     _allergies = TextEditingController(text: r?.allergies ?? '');
     _arrivalDetails = TextEditingController(text: r?.arrivalDetails ?? '');
     _note = TextEditingController(text: r?.note ?? '');
@@ -105,6 +112,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
   @override
   void dispose() {
     _name.dispose();
+    _occupation.dispose();
     _allergies.dispose();
     _arrivalDetails.dispose();
     _note.dispose();
@@ -124,8 +132,17 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
         'adults': _adults,
         'children': _children,
         'infants': _infants,
-        'attendingCeremonyIds': _ceremonies.toList(),
+        'attendingCeremonyIds': _status == 'DECLINED' ? <String>[] : _ceremonyStatus.entries.where((e) => e.value != 'DECLINED').map((e) => e.key).toList(),
+        'ceremonyResponses': _status == 'DECLINED'
+            ? <Json>[]
+            : _ceremonyStatus.entries
+                .map((e) => {'ceremonyId': e.key, 'status': e.value, 'adults': e.value == 'DECLINED' ? 0 : _adults, 'children': e.value == 'DECLINED' ? 0 : _children})
+                .toList(),
         'dietary': _dietary.toList(),
+        'foodPreference': _status == 'DECLINED' ? null : _food,
+        'occupation': _occupation.text.trim().isEmpty ? null : _occupation.text.trim(),
+        'accommodationRooms': _status != 'DECLINED' && _accommodation ? _rooms : 0,
+        'accommodationGuests': _status != 'DECLINED' && _accommodation ? _people : 0,
         'allergies': _allergies.text.trim().isEmpty ? null : _allergies.text.trim(),
         'arrivalMode': _arrivalMode,
         'arrivalDetails': _arrivalDetails.text.trim().isEmpty ? null : _arrivalDetails.text.trim(),
@@ -185,6 +202,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
         ),
         const SizedBox(height: 16),
         TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+        TextField(controller: _occupation, decoration: const InputDecoration(labelText: 'Occupation')),
         if (attending) ...[
           const SizedBox(height: 16),
           Text('PARTY SIZE (UP TO $max)', style: label),
@@ -194,13 +212,19 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
           if (widget.data.invitedCeremonies.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('CEREMONIES', style: label),
-            ...widget.data.invitedCeremonies.map((c) => CheckboxListTile(
+            ...widget.data.invitedCeremonies.map((c) => ListTile(
                   contentPadding: EdgeInsets.zero,
-                  value: _ceremonies.contains(c.id),
-                  activeColor: AppTheme.crimsonMaroon,
                   title: Text(c.title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                   subtitle: Text('${Formatters.dateTime(c.startsAt)} • ${c.venueName}', style: GoogleFonts.outfit(fontSize: 12)),
-                  onChanged: (v) => setState(() => v == true ? _ceremonies.add(c.id) : _ceremonies.remove(c.id)),
+                  trailing: DropdownButton<String>(
+                    value: _ceremonyStatus[c.id] ?? 'DECLINED',
+                    items: const [
+                      DropdownMenuItem(value: 'ATTENDING', child: Text('Yes')),
+                      DropdownMenuItem(value: 'MAYBE', child: Text('Maybe')),
+                      DropdownMenuItem(value: 'DECLINED', child: Text('No')),
+                    ],
+                    onChanged: (v) => setState(() => _ceremonyStatus[c.id] = v ?? 'DECLINED'),
+                  ),
                 )),
           ],
           const SizedBox(height: 8),
@@ -215,6 +239,18 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
                 onSelected: (v) => setState(() => v ? _dietary.add(e.key) : _dietary.remove(e.key)),
               ),
           ]),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _food,
+            decoration: const InputDecoration(labelText: 'Food preference'),
+            items: const [
+              DropdownMenuItem(value: 'VEG', child: Text('Veg')),
+              DropdownMenuItem(value: 'NON_VEG', child: Text('Non-veg')),
+              DropdownMenuItem(value: 'JAIN', child: Text('Jain')),
+              DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+            ],
+            onChanged: (v) => setState(() => _food = v),
+          ),
           const SizedBox(height: 12),
           TextField(controller: _allergies, decoration: const InputDecoration(labelText: 'Allergies or special needs')),
           const SizedBox(height: 12),
@@ -238,7 +274,9 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
             value: _accommodation,
             onChanged: (v) => setState(() => _accommodation = v),
           ),
-          if (_accommodation)
+          if (_accommodation) ...[
+            _counter('Rooms', _rooms, 1, 20, (v) => setState(() => _rooms = v)),
+            _counter('People staying', _people, 1, 40, (v) => setState(() => _people = v)),
             Row(children: [
               Expanded(
                 child: OutlinedButton(
@@ -260,6 +298,7 @@ class _RsvpFormState extends ConsumerState<_RsvpForm> {
                 ),
               ),
             ]),
+          ],
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             activeThumbColor: AppTheme.crimsonMaroon,

@@ -11,7 +11,11 @@ export interface User {
   phone: string;
   name: string | null;
   email: string | null;
+  occupation?: string | null;
   isPlatformAdmin: boolean;
+  profileComplete?: boolean;
+  messageOptOut?: boolean;
+  locale?: string;
 }
 
 export interface AccessibleWedding {
@@ -101,6 +105,17 @@ export interface Wedding {
   escrowAccountLast4: string | null;
   taxExemptionEnabled: boolean;
   stageDisplayMode: StageDisplayMode;
+  approvalStatus?: "PENDING" | "APPROVED" | "REJECTED" | "CHANGES_REQUESTED";
+  approvalNote?: string | null;
+  contactMobile?: string | null;
+  cardImageUrl?: string | null;
+  flatId?: string | null;
+  linkVisibility?: "PUBLIC" | "PRIVATE" | "PAUSED";
+  brickRatio?: number;
+  minGiftPaise?: number;
+  targetAmountPaise?: number | null;
+  hideAmountsFromGuests?: boolean;
+  kycStatus?: string;
   createdAt: string;
 }
 
@@ -137,6 +152,10 @@ export interface Rsvp {
   checkOutDate: string | null;
   needsShuttle: boolean;
   note: string | null;
+  accommodationRooms?: number;
+  accommodationGuests?: number;
+  foodPreference?: string | null;
+  ceremonyResponses?: { ceremonyId: string; status: RsvpStatus; adults: number; children: number }[];
   updatedAt: string;
 }
 
@@ -150,6 +169,9 @@ export interface RegistrySummary {
   targetPaise: number;
   presetTiers: number[];
   holdTtlSec: number;
+  brickRatio?: number;
+  pricePerBrickPaise?: number;
+  minGiftPaise?: number;
 }
 
 export interface Microsite {
@@ -188,6 +210,8 @@ export interface RoomState {
   openSft: number;
   startIndex: number;
   cells: string;
+  fills?: number[];
+  fundedBricks?: number;
   donors: Record<string, string>;
 }
 
@@ -199,11 +223,15 @@ export interface RegistryState extends RegistrySummary {
 export interface LockInput {
   slug: string;
   roomKey: string;
-  units: number;
+  units?: number;
+  mode?: "SQFT" | "BRICK" | "AMOUNT";
+  amountPaise?: number;
+  indexes?: number[];
   donorName?: string;
   relationship?: string;
   blessing?: string;
   anonymous?: boolean;
+  hideAmount?: boolean;
   tableNumber?: string;
   refLead?: string;
 }
@@ -353,6 +381,11 @@ export interface RsvpInput {
   note?: string | null;
   guestName?: string;
   email?: string | null;
+  occupation?: string;
+  foodPreference?: string | null;
+  accommodationRooms?: number;
+  accommodationGuests?: number;
+  ceremonyResponses?: { ceremonyId: string; status: RsvpStatus; adults: number; children: number }[];
 }
 
 export interface RsvpRow extends Rsvp {
@@ -522,4 +555,123 @@ export interface Ledger {
     contribution: { donorName: string; units: number; receiptNumber: string | null } | null;
   }[];
   settlements: Settlement[];
+}
+
+export interface PublicContent {
+  locale: string;
+  disclaimer: string;
+  intro: { title: string; body: string }[];
+  supportPhone: string | null;
+  supportEmail: string | null;
+  terms: string;
+  privacy: string;
+}
+
+export interface WeddingCard {
+  slug: string;
+  brideName: string;
+  groomName: string;
+  coverPhotoUrl: string | null;
+  cardImageUrl: string | null;
+  city: string | null;
+  weddingDate: string | null;
+  line: string;
+}
+
+export interface FlatArea {
+  id: string;
+  key: string;
+  name: string;
+  sft: number;
+  description: string | null;
+}
+
+export interface FlatListing {
+  id: string;
+  name: string;
+  projectName: string | null;
+  location: string;
+  description: string | null;
+  flatType: string;
+  totalSft: number;
+  pricePerSftPaise: number;
+  brickRatio: number;
+  targetAmountPaise: number;
+  minGiftPaise: number;
+  status: string;
+  photos: string[];
+  amenities: string[];
+  highlights: string[];
+  areas: FlatArea[];
+}
+
+export interface Registration {
+  id: string;
+  slug: string;
+  brideName: string;
+  groomName: string;
+  welcomeNote: string | null;
+  city: string | null;
+  weddingDate: string | null;
+  contactMobile: string | null;
+  approvalStatus: string;
+  approvalNote: string | null;
+  kycStatus: string;
+  registrant: { id: string; name: string | null; phone: string } | null;
+  flat: { id: string; name: string; location: string; flatType: string; status: string; totalSft: number; pricePerSftPaise: number } | null;
+  ceremonies: { id: string; title: string; startsAt: string; venueName: string; venueAddress: string | null; venueMapsUrl: string | null }[];
+}
+
+export interface Inbox {
+  unread: number;
+  items: { id: string; title: string; body: string; kind: string; readAt: string | null; createdAt: string }[];
+}
+
+export interface DirectoryUser {
+  id: string;
+  phone: string;
+  name: string | null;
+  occupation: string | null;
+  blockedAt: string | null;
+  blockedReason: string | null;
+  createdAt: string;
+}
+
+export interface AdminGift {
+  id: string;
+  status: string;
+  donorName: string;
+  units: number;
+  brickCount: number;
+  unitKind: string;
+  amountPaise: number;
+  room: string | null;
+  wedding: { slug?: string; brideName?: string; groomName?: string } | null;
+  createdAt: string;
+}
+
+export interface Analytics {
+  weddings: Record<string, number>;
+  flats: Record<string, number>;
+  gifts: { byStatus: Record<string, number>; revenuePaise: number; giftedSft: number };
+  conversion: { invitations: number; rsvps: number; gifts: number; linkToRsvp: number; rsvpToGift: number };
+  topWeddings: { slug: string | null; couple: string | null; amountPaise: number; gifts: number }[];
+}
+
+export interface AdminContent {
+  disclaimer: { en: string; hi: string; te: string };
+  supportPhone: string | null;
+  supportEmail: string | null;
+  terms: { en: string; hi: string; te: string };
+  privacy: { en: string; hi: string; te: string };
+}
+
+export interface Complaint {
+  id: string;
+  subject: string;
+  message: string;
+  status: string;
+  resolution: string | null;
+  user: { name: string | null; phone: string } | null;
+  createdAt: string;
 }
